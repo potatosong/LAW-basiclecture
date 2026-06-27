@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="ko" id="htmlRoot">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -8,173 +8,197 @@
     <meta name="theme-color" content="#4f46e5">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="영단어장">
+    <script>tailwind.config = { darkMode: 'class' }</script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: #f1f5f9; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
-        @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+        .dark ::-webkit-scrollbar-track { background: #1e293b; }
+        .dark ::-webkit-scrollbar-thumb { background: #475569; }
+        @keyframes fadeIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
         .animate-fade-in { animation: fadeIn 0.2s ease-out; }
 
         html, body { height: 100%; overflow: hidden; }
+        #app { display: flex; height: 100vh; overflow: hidden; }
 
         #sidebar {
-            width: 280px;
-            flex-shrink: 0;
+            width: 272px; flex-shrink: 0;
+            display: flex; flex-direction: column; height: 100%;
             transition: width 0.3s ease, opacity 0.3s ease;
             overflow: hidden;
         }
         #sidebar.collapsed { width: 0; opacity: 0; }
 
+        #mainArea { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+
+        .drag-over { outline: 2px dashed #6366f1; outline-offset: -2px; background: #eef2ff !important; }
+        .dark .drag-over { background: #1e1b4b !important; }
+        .word-card { cursor: grab; }
+        .word-card:active { cursor: grabbing; }
+
         @media (max-width: 767px) {
             #sidebar {
-                position: fixed;
-                top: 0; left: 0; bottom: 0;
-                z-index: 100;
-                width: 280px;
+                position: fixed; top: 0; left: 0; bottom: 0;
+                z-index: 100; width: 272px !important; opacity: 1 !important;
                 transform: translateX(-100%);
                 transition: transform 0.3s ease;
-                opacity: 1 !important;
             }
             #sidebar.open { transform: translateX(0); }
-            #overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 99; }
+            #overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:99; }
             #overlay.show { display: block; }
         }
     </style>
 </head>
-<body class="font-sans text-slate-800 antialiased bg-slate-100">
+<body class="font-sans text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-900 antialiased">
 
 <div id="overlay" onclick="closeSidebar()"></div>
 <input type="file" id="importFileInput" accept=".json" onchange="importJsonFile(event)" class="hidden">
 
 <!-- 동기화 토스트 -->
 <div id="syncToast" class="hidden fixed top-4 left-1/2 -translate-x-1/2 z-[200] bg-slate-900 text-white text-xs font-bold px-4 py-2 rounded-full shadow-xl flex items-center gap-2">
-    <span id="syncDot" class="w-2 h-2 rounded-full bg-yellow-400 inline-block"></span>
+    <span id="syncDot" class="w-2 h-2 rounded-full bg-yellow-400"></span>
     <span id="syncMsg">동기화 중...</span>
 </div>
 
-<div id="app" style="display:flex; height:100vh; overflow:hidden;">
+<!-- 단어 이동 모달 -->
+<div id="moveModal" class="hidden fixed inset-0 bg-black/60 z-[150] flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl p-6 w-full max-w-sm">
+        <h3 class="font-extrabold text-slate-800 dark:text-slate-100 mb-1">폴더로 이동</h3>
+        <p id="moveWordLabel" class="text-xs text-slate-500 dark:text-slate-400 mb-4"></p>
+        <div id="moveFolderList" class="space-y-1.5 max-h-64 overflow-y-auto"></div>
+        <button onclick="closeMoveModal()" class="mt-4 w-full bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300 py-2.5 rounded-xl text-sm font-bold transition">취소</button>
+    </div>
+</div>
+
+<div id="app">
     <!-- ── 사이드바 ── -->
-    <aside id="sidebar" style="background:#0f172a; display:flex; flex-direction:column; height:100%;">
-        <div class="p-5 border-b border-slate-800 flex items-center gap-3 shrink-0">
-            <div class="bg-indigo-600 text-white p-2.5 rounded-xl text-xl shadow-lg">
+    <aside id="sidebar" class="bg-slate-900 text-slate-300 border-r border-slate-800">
+        <div class="p-4 border-b border-slate-800 flex items-center gap-3 shrink-0">
+            <div class="bg-indigo-600 text-white p-2 rounded-xl text-lg shadow-lg shrink-0">
                 <i class="fa-solid fa-swatchbook"></i>
             </div>
             <div class="flex-1 min-w-0">
-                <h1 class="text-base font-bold text-white">영단어장</h1>
+                <h1 class="text-sm font-bold text-white">영단어장</h1>
                 <span class="text-[10px] text-indigo-300 font-mono flex items-center gap-1.5">
-                    <span id="syncDot2" class="w-1.5 h-1.5 rounded-full bg-yellow-400 inline-block transition-colors duration-300"></span>
+                    <span id="syncDot2" class="w-1.5 h-1.5 rounded-full bg-yellow-400 inline-block"></span>
                     <span id="syncLabel">연결 중...</span>
                 </span>
             </div>
-            <button onclick="closeSidebar()" class="md:hidden text-slate-500 hover:text-white p-1 shrink-0">
-                <i class="fa-solid fa-xmark text-lg"></i>
-            </button>
+            <button onclick="closeSidebar()" class="md:hidden text-slate-500 hover:text-white p-1 shrink-0"><i class="fa-solid fa-xmark"></i></button>
         </div>
 
-        <div class="flex-1 overflow-y-auto p-4">
-            <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3 px-2 flex justify-between items-center">
-                <span>내 폴더 목록</span>
+        <div class="flex-1 overflow-y-auto p-3">
+            <div class="flex justify-between items-center mb-2 px-1">
+                <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">폴더 목록</span>
                 <button onclick="addRootFolder()" class="text-indigo-400 hover:text-indigo-300 text-[11px] flex items-center gap-1 font-bold">
-                    <i class="fa-solid fa-folder-plus"></i> 메인추가
+                    <i class="fa-solid fa-folder-plus"></i> 추가
                 </button>
             </div>
-            <ul id="folderTreeArea" class="space-y-1.5"></ul>
+            <ul id="folderTreeArea" class="space-y-1"></ul>
         </div>
 
-        <div class="p-4 border-t border-slate-800 space-y-2 shrink-0">
-            <button onclick="addRootFolder()" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2.5 rounded-xl text-sm font-bold transition flex items-center justify-center gap-2">
-                <i class="fa-solid fa-plus"></i> 새 메인 폴더 만들기
+        <div class="p-3 border-t border-slate-800 space-y-2 shrink-0">
+            <button onclick="addRootFolder()" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5">
+                <i class="fa-solid fa-plus"></i> 새 메인 폴더
             </button>
-            <div class="grid grid-cols-2 gap-2">
-                <button onclick="exportJsonFile()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs py-2.5 rounded-xl font-medium transition border border-slate-700 flex items-center justify-center gap-1.5">
+            <div class="grid grid-cols-2 gap-1.5">
+                <button onclick="exportJsonFile()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs py-2 rounded-xl font-medium transition border border-slate-700 flex items-center justify-center gap-1">
                     <i class="fa-solid fa-download text-indigo-400"></i> 백업
                 </button>
-                <button onclick="document.getElementById('importFileInput').click()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs py-2.5 rounded-xl font-medium transition border border-slate-700 flex items-center justify-center gap-1.5">
+                <button onclick="document.getElementById('importFileInput').click()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs py-2 rounded-xl font-medium transition border border-slate-700 flex items-center justify-center gap-1">
                     <i class="fa-solid fa-upload text-teal-400"></i> 복원
                 </button>
             </div>
+            <button onclick="setGeminiKey()" class="w-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-amber-400 text-xs py-2 rounded-xl font-medium transition border border-slate-700 flex items-center justify-center gap-1.5">
+                <i class="fa-solid fa-key text-amber-400"></i> Gemini API 키 설정
+            </button>
         </div>
     </aside>
 
-    <!-- ── 메인 영역 ── -->
-    <div id="mainArea" style="flex:1; display:flex; flex-direction:column; overflow:hidden; min-width:0;">
+    <!-- ── 메인 ── -->
+    <div id="mainArea" class="bg-slate-50 dark:bg-slate-900">
+
         <!-- 헤더 -->
-        <header class="bg-white border-b border-slate-200 shadow-sm shrink-0">
-            <div class="px-4 py-3 flex items-center gap-2 max-w-5xl">
-                <button onclick="toggleSidebar()" class="bg-slate-100 hover:bg-indigo-50 text-slate-600 hover:text-indigo-600 border border-slate-200 p-2.5 rounded-xl transition shrink-0">
+        <header class="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 shadow-sm shrink-0">
+            <div class="px-3 py-2.5 flex items-center gap-2">
+                <button onclick="toggleSidebar()" class="bg-slate-100 dark:bg-slate-700 hover:bg-indigo-50 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 p-2.5 rounded-xl transition shrink-0">
                     <i class="fa-solid fa-bars"></i>
-                </button>
-                <button onclick="toggleFullScreen()" id="fsBtn" class="bg-slate-100 hover:bg-indigo-50 text-slate-600 hover:text-indigo-600 border border-slate-200 p-2.5 rounded-xl transition shrink-0">
-                    <i class="fa-solid fa-expand"></i>
                 </button>
                 <div class="relative flex-1">
                     <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400"><i class="fa-solid fa-magnifying-glass text-sm"></i></span>
-                    <input type="text" id="searchInput" placeholder="영단어 입력 후 검색 (뜻 여러개: / 구분)"
+                    <input type="text" id="searchInput" placeholder="영단어 검색 (뜻여러개: / 구분)"
                         onkeydown="if(event.key==='Enter') searchMeaning()"
-                        class="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition font-medium">
+                        class="w-full pl-9 pr-3 py-2.5 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white dark:focus:bg-slate-600 transition font-medium dark:text-slate-200 dark:placeholder-slate-400">
                 </div>
-                <button onclick="speakInputText()" class="hidden sm:flex bg-slate-100 hover:bg-slate-200 text-slate-700 p-2.5 rounded-xl text-sm border border-slate-200 transition shrink-0">
+                <button onclick="speakInputText()" class="hidden sm:flex bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300 p-2.5 rounded-xl border border-slate-200 dark:border-slate-600 transition shrink-0">
                     <i class="fa-solid fa-volume-high text-indigo-600"></i>
                 </button>
                 <button onclick="searchMeaning()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl text-sm font-semibold shadow-md transition shrink-0">
                     <span class="hidden sm:inline">뜻 검색</span>
                     <i class="fa-solid fa-magnifying-glass sm:hidden"></i>
                 </button>
+                <button onclick="toggleDarkMode()" id="darkBtn" class="bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 p-2.5 rounded-xl transition shrink-0" title="다크모드">
+                    <i class="fa-solid fa-moon dark:hidden"></i>
+                    <i class="fa-solid fa-sun hidden dark:inline"></i>
+                </button>
             </div>
-            <div id="searchResultArea" class="px-4 max-w-5xl"></div>
+            <div id="searchResultArea" class="px-3 max-w-4xl"></div>
         </header>
 
-        <!-- 단어 목록 -->
-        <div class="flex-1 overflow-y-auto">
-            <div class="p-4 max-w-6xl mx-auto">
-                <!-- 폴더명 + 툴바 -->
-                <div class="flex flex-wrap justify-between items-center gap-3 mb-4 select-none">
-                    <div>
-                        <span class="text-xs font-bold text-indigo-600 uppercase tracking-wider bg-indigo-50 px-2.5 py-1 rounded-md">Current Folder</span>
-                        <h2 id="currentFolderName" class="text-xl font-extrabold text-slate-800 mt-1">기본 단어장</h2>
-                    </div>
-                    <div class="flex flex-wrap items-center gap-2" id="toolbar">
-                        <button onclick="openStudyModal()" class="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white px-3 py-2 rounded-xl text-xs font-extrabold shadow-md transition flex items-center gap-1.5 whitespace-nowrap">
-                            <i class="fa-solid fa-gamepad text-amber-300"></i> 학습 센터
-                        </button>
-                        <button onclick="toggleHideExtra()" id="hideExtraBtn" class="bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 px-2.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-sm whitespace-nowrap">
-                            <i class="fa-solid fa-file-circle-plus text-purple-600"></i> <span>부가정보</span>
-                        </button>
-                        <button onclick="toggleHideMemorized()" id="hideMemBtn" class="bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 px-2.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-sm whitespace-nowrap">
-                            <i class="fa-solid fa-eye text-emerald-600"></i> <span>암기숨김</span>
-                        </button>
-                        <button onclick="toggleBlurMode()" id="blurBtn" class="bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 px-2.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-sm whitespace-nowrap">
-                            <i class="fa-solid fa-eye-slash text-slate-400"></i> <span>뜻가리기</span>
-                        </button>
-                        <button onclick="toggleSortMode()" id="sortBtn" class="bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 px-2.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-sm whitespace-nowrap">
-                            <i class="fa-solid fa-arrow-down-9-1 text-slate-500"></i> <span>최신순</span>
-                        </button>
-                        <button id="playAllBtn" onclick="playAllWords()" class="bg-teal-600 hover:bg-teal-700 text-white px-3 py-2 rounded-xl text-xs font-bold shadow-md transition flex items-center gap-1.5 whitespace-nowrap">
-                            <i class="fa-solid fa-play"></i> 연속발음
-                        </button>
-                    </div>
+        <!-- 단어 필터 + 툴바 -->
+        <div class="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-3 py-2 shrink-0">
+            <div class="flex items-center gap-2 mb-2">
+                <div class="relative flex-1 max-w-xs">
+                    <span class="absolute inset-y-0 left-0 flex items-center pl-2.5 text-slate-400"><i class="fa-solid fa-filter text-xs"></i></span>
+                    <input type="text" id="wordFilterInput" placeholder="저장된 단어 검색..."
+                        oninput="renderWords()"
+                        class="w-full pl-7 pr-3 py-1.5 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400 dark:text-slate-200 dark:placeholder-slate-500 transition font-medium">
                 </div>
-
-                <div id="wordGridArea" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3"></div>
+                <h2 id="currentFolderName" class="font-extrabold text-slate-700 dark:text-slate-200 text-sm flex-1 truncate hidden sm:block"></h2>
             </div>
+            <!-- 툴바 (가로 스크롤) -->
+            <div class="flex items-center gap-1.5 overflow-x-auto pb-0.5 select-none" style="scrollbar-width:none">
+                <button onclick="openStudyModal()" class="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-2.5 py-1.5 rounded-lg text-[11px] font-extrabold shadow transition flex items-center gap-1 whitespace-nowrap shrink-0">
+                    <i class="fa-solid fa-gamepad text-amber-300 text-xs"></i> 학습센터
+                </button>
+                <button onclick="toggleHideExtra()" id="hideExtraBtn" class="bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition whitespace-nowrap shrink-0">
+                    부가정보
+                </button>
+                <button onclick="toggleHideMemorized()" id="hideMemBtn" class="bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition whitespace-nowrap shrink-0">
+                    암기숨김
+                </button>
+                <button onclick="toggleBlurMode()" id="blurBtn" class="bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition whitespace-nowrap shrink-0">
+                    뜻가리기
+                </button>
+                <button onclick="toggleSortMode()" id="sortBtn" class="bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition whitespace-nowrap shrink-0">
+                    <i class="fa-solid fa-arrow-down-9-1 text-slate-400"></i> 최신순
+                </button>
+                <button id="playAllBtn" onclick="playAllWords()" class="bg-teal-600 hover:bg-teal-700 text-white px-2.5 py-1.5 rounded-lg text-[11px] font-bold shadow transition flex items-center gap-1 whitespace-nowrap shrink-0">
+                    <i class="fa-solid fa-play text-xs"></i> 연속발음
+                </button>
+            </div>
+        </div>
+
+        <!-- 단어 그리드 -->
+        <div class="flex-1 overflow-y-auto p-3">
+            <div id="wordGridArea" class="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5"></div>
         </div>
     </div>
 </div>
 
 <!-- ── 학습 모달 ── -->
 <div id="studyModal" class="fixed inset-0 bg-slate-950/95 z-50 hidden flex flex-col justify-between p-4 md:p-10 select-none backdrop-blur-md text-white">
-    <div class="max-w-4xl mx-auto w-full flex flex-wrap justify-between items-center gap-3 border-b border-slate-800 pb-4">
+    <div class="max-w-4xl mx-auto w-full flex flex-wrap justify-between items-center gap-2 border-b border-slate-800 pb-3">
         <div class="flex items-center gap-2 flex-wrap">
             <span class="bg-indigo-600 font-mono text-xs px-3 py-1.5 rounded-full font-bold" id="studyProgress">1 / 10</span>
             <button onclick="toggleShuffleMode()" id="studyShuffleBtn" class="bg-slate-900 border border-slate-800 text-slate-400 px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5">
                 <i class="fa-solid fa-shuffle"></i> <span>랜덤: OFF</span>
             </button>
         </div>
-        <div class="flex bg-slate-900 p-1 rounded-xl border border-slate-800 gap-0.5 text-xs font-bold flex-wrap">
+        <div class="flex bg-slate-900 p-1 rounded-xl border border-slate-800 gap-0.5 text-xs font-bold overflow-x-auto">
             <button onclick="setStudyMode('flashcard')" id="tab_flashcard" class="px-2.5 py-1.5 rounded-lg study-tab bg-indigo-600 text-white whitespace-nowrap">🃏 플래시카드</button>
             <button onclick="setStudyMode('spelling')" id="tab_spelling" class="px-2.5 py-1.5 rounded-lg study-tab text-slate-400 hover:text-white whitespace-nowrap">✍️ 철자입력</button>
             <button onclick="setStudyMode('choice')" id="tab_choice" class="px-2.5 py-1.5 rounded-lg study-tab text-slate-400 hover:text-white whitespace-nowrap">🔢 객관식</button>
@@ -183,254 +207,329 @@
         <button onclick="closeStudyModal()" class="bg-slate-800 hover:bg-rose-600 w-9 h-9 rounded-full flex items-center justify-center transition shrink-0"><i class="fa-solid fa-xmark"></i></button>
     </div>
     <div class="flex-1 flex items-center justify-center my-3 max-w-3xl mx-auto w-full text-slate-800">
-        <div id="studyCanvas" class="w-full min-h-[320px] sm:min-h-[400px] bg-white border border-slate-200 rounded-3xl shadow-2xl p-6 sm:p-10 flex flex-col justify-center items-center text-center relative overflow-hidden"></div>
+        <div id="studyCanvas" class="w-full min-h-[300px] sm:min-h-[380px] bg-white dark:bg-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-3xl shadow-2xl p-6 sm:p-10 flex flex-col justify-center items-center text-center relative overflow-hidden"></div>
     </div>
     <div class="max-w-3xl mx-auto w-full flex items-center gap-2">
-        <button onclick="studyPrev()" class="bg-slate-800 hover:bg-slate-700 px-4 py-3.5 rounded-2xl font-bold text-sm transition flex items-center gap-1.5 text-white shrink-0"><i class="fa-solid fa-arrow-left"></i> 이전</button>
-        <button onclick="toggleStudyMemorized()" id="studyMemBtn" class="flex-1 py-3.5 rounded-2xl font-extrabold text-sm transition border flex items-center justify-center gap-2 shadow-lg"></button>
-        <button onclick="studyNext()" class="bg-slate-800 hover:bg-slate-700 px-4 py-3.5 rounded-2xl font-bold text-sm transition flex items-center gap-1.5 text-white shrink-0">다음 <i class="fa-solid fa-arrow-right"></i></button>
+        <button onclick="studyPrev()" class="bg-slate-800 hover:bg-slate-700 px-4 py-3 rounded-2xl font-bold text-sm transition flex items-center gap-1.5 text-white shrink-0"><i class="fa-solid fa-arrow-left"></i> 이전</button>
+        <button onclick="toggleStudyMemorized()" id="studyMemBtn" class="flex-1 py-3 rounded-2xl font-extrabold text-sm transition border flex items-center justify-center gap-2 shadow-lg"></button>
+        <button onclick="studyNext()" class="bg-slate-800 hover:bg-slate-700 px-4 py-3 rounded-2xl font-bold text-sm transition flex items-center gap-1.5 text-white shrink-0">다음 <i class="fa-solid fa-arrow-right"></i></button>
     </div>
 </div>
 
-<!-- ── Firebase ── -->
+<!-- Firebase -->
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
     import { getFirestore, doc, onSnapshot, setDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-
     const app = initializeApp({
-        apiKey: "AIzaSyAeplPxURZu9o0OQAFY5RBh1BP0P0dLcSc",
-        authDomain: "my-eng-wordbook.firebaseapp.com",
-        projectId: "my-eng-wordbook",
-        storageBucket: "my-eng-wordbook.firebasestorage.app",
-        messagingSenderId: "613424514679",
-        appId: "1:613424514679:web:94ecf9cc4898db06876872"
+        apiKey:"AIzaSyAeplPxURZu9o0OQAFY5RBh1BP0P0dLcSc",
+        authDomain:"my-eng-wordbook.firebaseapp.com",
+        projectId:"my-eng-wordbook",
+        storageBucket:"my-eng-wordbook.firebasestorage.app",
+        messagingSenderId:"613424514679",
+        appId:"1:613424514679:web:94ecf9cc4898db06876872"
     });
     const db = getFirestore(app);
     const DATA_DOC = doc(db, 'wordbook', 'main');
-
     function showSync(msg, color) {
-        const t = document.getElementById('syncToast');
-        const d1 = document.getElementById('syncDot');
-        const d2 = document.getElementById('syncDot2');
-        const m = document.getElementById('syncMsg');
-        const lb = document.getElementById('syncLabel');
-        if (m) m.textContent = msg;
-        if (lb) lb.textContent = msg;
-        if (d1) d1.style.background = color;
-        if (d2) d2.style.background = color;
-        if (t) { t.classList.remove('hidden'); clearTimeout(window._tt); window._tt = setTimeout(() => t.classList.add('hidden'), 2000); }
+        ['syncDot','syncDot2'].forEach(id => { const el=document.getElementById(id); if(el) el.style.background=color; });
+        const lb=document.getElementById('syncLabel'); if(lb) lb.textContent=msg;
+        const t=document.getElementById('syncToast');
+        const m=document.getElementById('syncMsg'); if(m) m.textContent=msg;
+        if(t){t.classList.remove('hidden');clearTimeout(window._tt);window._tt=setTimeout(()=>t.classList.add('hidden'),2000);}
     }
-
     window._saveToFirestore = async (folderTree, words) => {
-        try {
-            showSync('저장 중...', '#facc15');
-            await setDoc(DATA_DOC, { folderTree, words, updatedAt: Date.now() });
-            showSync('동기화 완료', '#34d399');
-        } catch(e) {
-            showSync('저장 실패', '#f87171');
-        }
+        try { showSync('저장 중...','#facc15'); await setDoc(DATA_DOC,{folderTree,words,updatedAt:Date.now()}); showSync('동기화됨','#34d399'); }
+        catch(e) { showSync('저장 실패','#f87171'); }
     };
-
     onSnapshot(DATA_DOC, snap => {
-        if (!snap.exists()) { window._initApp(null); return; }
-        showSync('동기화됨', '#34d399');
-        window._initApp(snap.data());
-    }, err => {
-        showSync('오프라인', '#f87171');
-        window._initApp(null);
-    });
+        showSync('동기화됨','#34d399');
+        window._initApp(snap.exists() ? snap.data() : null);
+    }, () => { showSync('오프라인','#f87171'); window._initApp(null); });
 </script>
 
-<!-- ── 앱 로직 ── -->
+<!-- 앱 로직 -->
 <script>
-const LS_TREE = 'smart_folders_tree_v3';
-const LS_WORDS = 'smart_words_pro_v3';
+const LS_TREE='smart_folders_tree_v3', LS_WORDS='smart_words_pro_v3';
+let folderTree=[], words=[], activeFolderId='';
+let sortMode='newest', isBlurMode=false, isHideMemorized=false, isHideExtra=false;
+let editingWordId=null, currentActiveWord='';
+let collapsedFolders=new Set();
+let movingWordId=null;
 
-let folderTree = [], words = [], activeFolderId = '';
-let sortMode = 'newest', isBlurMode = false, isHideMemorized = false, isHideExtra = false;
-let editingWordId = null, currentActiveWord = '';
-let _initialized = false;
-
-window._initApp = function(fireData) {
-    if (fireData) {
-        folderTree = fireData.folderTree || [];
-        words = (fireData.words || []).map(w => normalizeWord(w, folderTree));
-    } else {
-        let t = localStorage.getItem(LS_TREE);
-        folderTree = t ? JSON.parse(t) : [
-            {id:'f_root_0', name:'Day 1', parentId:null},
-            {id:'f_root_1', name:'회화 표현', parentId:null},
-            {id:'f_root_2', name:'수능 대비', parentId:null}
-        ];
-        let w = localStorage.getItem(LS_WORDS);
-        words = w ? JSON.parse(w).map(x => normalizeWord(x, folderTree)) : [
-            {id:101, folderId:'f_root_0', word:'serendipity', meanings:['뜻밖의 기쁨, 행운'], synonyms:['blessing, windfall'], extraForms:'adj. serendipitous', examples:['Finding this tool was pure serendipity.'], memorized:false},
-            {id:102, folderId:'f_root_0', word:'abhor', meanings:['혐오하다, 몹시 싫어하다'], synonyms:['detest, loathe'], extraForms:'n. abhorrence', examples:['Most people abhor injustice.'], memorized:false}
-        ];
-    }
-    let saved = localStorage.getItem('smart_active_folder_id');
-    activeFolderId = (saved && folderTree.some(f => f.id === saved)) ? saved : (folderTree[0]?.id || '');
-    _initialized = true;
-    renderFolders();
-    renderWords();
-};
-
-function normalizeWord(w, tree) {
-    if (typeof w.meaning === 'string') { w.meanings = [w.meaning]; delete w.meaning; }
-    if (!w.meanings) w.meanings = ['뜻 없음'];
-    if (!Array.isArray(w.synonyms)) w.synonyms = w.meanings.map(() => '');
-    while (w.synonyms.length < w.meanings.length) w.synonyms.push('');
-    if (w.extraForms === undefined) w.extraForms = '';
-    if (typeof w.example === 'string') { w.examples = w.example.trim() ? [w.example.trim()] : []; delete w.example; }
-    if (!w.examples) w.examples = [];
-    if (w.folder && !w.folderId) { let t = tree.find(f => f.name === w.folder); w.folderId = t ? t.id : tree[0]?.id; delete w.folder; }
-    if (w.memorized === undefined) w.memorized = false;
-    return w;
+// ── 다크모드 ──
+(function(){
+    if(localStorage.getItem('darkMode')==='1') document.documentElement.classList.add('dark');
+})();
+function toggleDarkMode(){
+    const on=document.documentElement.classList.toggle('dark');
+    localStorage.setItem('darkMode', on?'1':'0');
 }
 
-function saveData() {
-    localStorage.setItem(LS_TREE, JSON.stringify(folderTree));
-    localStorage.setItem(LS_WORDS, JSON.stringify(words));
-    localStorage.setItem('smart_active_folder_id', activeFolderId);
-    if (window._saveToFirestore) window._saveToFirestore(folderTree, words);
+// ── Gemini API ──
+function getGeminiKey(){ return localStorage.getItem('gemini_api_key')||''; }
+function setGeminiKey(){
+    const cur=getGeminiKey();
+    const key=prompt('Gemini API 키를 입력하세요:\n(aistudio.google.com → API Keys 에서 발급)\n\n현재: '+(cur?cur.slice(0,8)+'...':'미설정'));
+    if(key?.trim()){ localStorage.setItem('gemini_api_key',key.trim()); alert('저장됐습니다!'); }
+}
+
+// ── 데이터 초기화 ──
+window._initApp = function(fireData){
+    if(fireData){ folderTree=fireData.folderTree||[]; words=(fireData.words||[]).map(w=>normalizeWord(w,folderTree)); }
+    else {
+        let t=localStorage.getItem(LS_TREE);
+        folderTree=t?JSON.parse(t):[{id:'f_root_0',name:'Day 1',parentId:null},{id:'f_root_1',name:'회화 표현',parentId:null},{id:'f_root_2',name:'수능 대비',parentId:null}];
+        let w=localStorage.getItem(LS_WORDS);
+        words=w?JSON.parse(w).map(x=>normalizeWord(x,folderTree)):[
+            {id:101,folderId:'f_root_0',word:'serendipity',meanings:['뜻밖의 기쁨, 행운'],synonyms:['blessing, windfall'],extraForms:'adj. serendipitous',examples:['Finding this tool was pure serendipity.'],memorized:false},
+            {id:102,folderId:'f_root_0',word:'abhor',meanings:['혐오하다, 몹시 싫어하다'],synonyms:['detest, loathe'],extraForms:'n. abhorrence',examples:['Most people abhor injustice.'],memorized:false}
+        ];
+    }
+    let saved=localStorage.getItem('smart_active_folder_id');
+    activeFolderId=(saved&&folderTree.some(f=>f.id===saved))?saved:(folderTree[0]?.id||'');
+    renderFolders(); renderWords();
+};
+
+function normalizeWord(w,tree){
+    if(typeof w.meaning==='string'){w.meanings=[w.meaning];delete w.meaning;}
+    if(!w.meanings)w.meanings=['뜻 없음'];
+    if(!Array.isArray(w.synonyms))w.synonyms=w.meanings.map(()=>'');
+    while(w.synonyms.length<w.meanings.length)w.synonyms.push('');
+    if(w.extraForms===undefined)w.extraForms='';
+    if(typeof w.example==='string'){w.examples=w.example.trim()?[w.example.trim()]:[];delete w.example;}
+    if(!w.examples)w.examples=[];
+    if(w.folder&&!w.folderId){let t=tree.find(f=>f.name===w.folder);w.folderId=t?t.id:tree[0]?.id;delete w.folder;}
+    if(w.memorized===undefined)w.memorized=false;
+    return w;
+}
+function saveData(){
+    localStorage.setItem(LS_TREE,JSON.stringify(folderTree));
+    localStorage.setItem(LS_WORDS,JSON.stringify(words));
+    localStorage.setItem('smart_active_folder_id',activeFolderId);
+    if(window._saveToFirestore)window._saveToFirestore(folderTree,words);
 }
 
 // ── 사이드바 ──
-function toggleSidebar() {
-    const sb = document.getElementById('sidebar');
-    const ov = document.getElementById('overlay');
-    if (window.innerWidth < 768) {
-        sb.classList.toggle('open');
-        ov.classList.toggle('show');
-    } else {
-        sb.classList.toggle('collapsed');
-    }
+function toggleSidebar(){
+    const sb=document.getElementById('sidebar'),ov=document.getElementById('overlay');
+    if(window.innerWidth<768){sb.classList.toggle('open');ov.classList.toggle('show');}
+    else sb.classList.toggle('collapsed');
 }
-function closeSidebar() {
-    document.getElementById('sidebar').classList.remove('open');
-    document.getElementById('overlay').classList.remove('show');
-}
-function toggleFullScreen() {
-    const btn = document.getElementById('fsBtn');
-    if (!document.fullscreenElement) {
-        document.documentElement.requestFullscreen().then(() => { if(btn) btn.innerHTML = `<i class="fa-solid fa-compress"></i>`; }).catch(()=>{});
-    } else {
-        document.exitFullscreen?.().then(() => { if(btn) btn.innerHTML = `<i class="fa-solid fa-expand"></i>`; });
-    }
-}
+function closeSidebar(){document.getElementById('sidebar').classList.remove('open');document.getElementById('overlay').classList.remove('show');}
+function toggleFullScreen(){const btn=document.getElementById('fsBtn');if(!document.fullscreenElement){document.documentElement.requestFullscreen().then(()=>{if(btn)btn.innerHTML=`<i class="fa-solid fa-compress"></i>`;}).catch(()=>{});}else{document.exitFullscreen?.().then(()=>{if(btn)btn.innerHTML=`<i class="fa-solid fa-expand"></i>`;});}}
 
-// ── 폴더 ──
-function renderFolders() {
-    const area = document.getElementById('folderTreeArea');
-    if (!area) return;
-    area.innerHTML = folderTree.filter(f => f.parentId === null).map(root => {
-        let isActive = root.id === activeFolderId;
-        let children = folderTree.filter(f => f.parentId === root.id);
-        let childHtml = children.map(child => {
-            let ca = child.id === activeFolderId;
-            return `<li class="flex items-center justify-between p-2 rounded-xl cursor-pointer transition ${ca ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800/80 text-slate-400 hover:text-slate-200'}" onclick="selectFolder('${child.id}',event)">
-                <div class="flex items-center gap-2 truncate"><i class="fa-solid fa-file-lines text-xs ${ca?'text-white':'text-slate-500'}"></i><span class="text-xs truncate">${child.name}</span></div>
-                <button onclick="deleteFolder('${child.id}',event)" class="text-slate-500 hover:text-rose-400 px-1"><i class="fa-solid fa-trash-can text-[10px]"></i></button>
+// ── 폴더 렌더링 ──
+function renderFolders(){
+    const area=document.getElementById('folderTreeArea'); if(!area)return;
+    const roots=folderTree.filter(f=>f.parentId===null);
+    area.innerHTML=roots.map(root=>{
+        const isActive=root.id===activeFolderId;
+        const children=folderTree.filter(f=>f.parentId===root.id);
+        const isCollapsed=collapsedFolders.has(root.id);
+        const childHtml=children.map(child=>{
+            const ca=child.id===activeFolderId;
+            return `<li class="flex items-center justify-between p-2 rounded-xl cursor-pointer transition ${ca?'bg-indigo-600 text-white font-bold':'hover:bg-slate-800/80 text-slate-400 hover:text-slate-200'}"
+                draggable="false"
+                ondragover="event.preventDefault();this.classList.add('drag-over')"
+                ondragleave="this.classList.remove('drag-over')"
+                ondrop="dropWordToFolder('${child.id}',event);this.classList.remove('drag-over')"
+                onclick="selectFolder('${child.id}',event)">
+                <div class="flex items-center gap-2 truncate">
+                    <i class="fa-solid fa-file-lines text-xs ${ca?'text-white':'text-slate-500'}"></i>
+                    <span class="text-xs truncate">${child.name}</span>
+                </div>
+                <div class="flex items-center gap-0.5 shrink-0">
+                    <button onclick="renameFolder('${child.id}',event)" class="text-slate-500 hover:text-indigo-400 p-0.5"><i class="fa-solid fa-pen text-[9px]"></i></button>
+                    <button onclick="deleteFolder('${child.id}',event)" class="text-slate-500 hover:text-rose-400 p-0.5"><i class="fa-solid fa-trash-can text-[9px]"></i></button>
+                </div>
             </li>`;
         }).join('');
-        return `<li class="flex flex-col mb-1.5">
-            <div class="flex items-center justify-between p-2.5 rounded-xl cursor-pointer transition ${isActive ? 'bg-indigo-600 text-white font-bold shadow-md' : 'hover:bg-slate-800 text-slate-300'}" onclick="selectFolder('${root.id}',event)">
-                <div class="flex items-center gap-2 truncate font-medium"><i class="fa-solid fa-folder${isActive?'-open text-white':' text-indigo-400'}"></i><span class="text-xs truncate">${root.name}</span></div>
+        return `<li class="flex flex-col mb-1">
+            <div class="flex items-center justify-between p-2 rounded-xl cursor-pointer transition ${isActive?'bg-indigo-600 text-white font-bold shadow-md':'hover:bg-slate-800 text-slate-300'}"
+                ondragover="event.preventDefault();this.classList.add('drag-over')"
+                ondragleave="this.classList.remove('drag-over')"
+                ondrop="dropWordToFolder('${root.id}',event);this.classList.remove('drag-over')"
+                onclick="selectFolder('${root.id}',event)">
+                <div class="flex items-center gap-2 truncate font-medium">
+                    <i class="fa-solid fa-folder${isActive?'-open text-white':' text-indigo-400'}"></i>
+                    <span class="text-xs truncate">${root.name}</span>
+                </div>
                 <div class="flex items-center gap-0.5 shrink-0">
-                    <button onclick="addSubFolder('${root.id}',event)" class="text-slate-400 hover:text-white p-1"><i class="fa-solid fa-folder-plus text-xs"></i></button>
-                    <button onclick="deleteFolder('${root.id}',event)" class="text-slate-500 hover:text-rose-400 p-1"><i class="fa-solid fa-trash-can text-xs"></i></button>
+                    ${children.length>0?`<button onclick="toggleFolderCollapse('${root.id}',event)" class="text-slate-400 hover:text-white p-0.5"><i class="fa-solid fa-chevron-${isCollapsed?'right':'down'} text-[9px]"></i></button>`:''}
+                    <button onclick="addSubFolder('${root.id}',event)" class="text-slate-400 hover:text-white p-0.5"><i class="fa-solid fa-folder-plus text-xs"></i></button>
+                    <button onclick="renameFolder('${root.id}',event)" class="text-slate-500 hover:text-indigo-400 p-0.5"><i class="fa-solid fa-pen text-[9px]"></i></button>
+                    <button onclick="deleteFolder('${root.id}',event)" class="text-slate-500 hover:text-rose-400 p-0.5"><i class="fa-solid fa-trash-can text-[9px]"></i></button>
                 </div>
             </div>
-            ${children.length > 0 ? `<ul class="pl-6 mt-1 space-y-1 border-l border-slate-800 ml-3.5">${childHtml}</ul>` : ''}
+            ${(!isCollapsed&&children.length>0)?`<ul class="pl-5 mt-0.5 space-y-0.5 border-l border-slate-800 ml-3">${childHtml}</ul>`:''}
         </li>`;
     }).join('');
-    let cur = folderTree.find(f => f.id === activeFolderId);
-    if (cur) {
-        let disp = cur.name;
-        if (cur.parentId) { let p = folderTree.find(f => f.id === cur.parentId); if(p) disp = `${p.name} > ${cur.name}`; }
-        const el = document.getElementById('currentFolderName');
-        if (el) el.innerText = disp;
+    let cur=folderTree.find(f=>f.id===activeFolderId);
+    if(cur){
+        let disp=cur.name;
+        if(cur.parentId){let p=folderTree.find(f=>f.id===cur.parentId);if(p)disp=`${p.name} > ${cur.name}`;}
+        const el=document.getElementById('currentFolderName');if(el)el.innerText=disp;
     }
 }
 
-function selectFolder(id, e) { e.stopPropagation(); stopAllWords(); activeFolderId = id; localStorage.setItem('smart_active_folder_id', id); renderFolders(); renderWords(); closeSidebar(); }
-function addRootFolder() { const n = prompt("새 메인 폴더명:"); if (!n?.trim()) return; let id = 'f_'+Date.now(); folderTree.push({id, name:n.trim(), parentId:null}); activeFolderId = id; saveData(); renderFolders(); renderWords(); }
-function addSubFolder(pid, e) { e.stopPropagation(); let p = folderTree.find(f=>f.id===pid); const n = prompt(`[ ${p.name} ] 하위 폴더명:`); if(!n?.trim()) return; let id='f_'+Date.now(); folderTree.push({id, name:n.trim(), parentId:pid}); activeFolderId=id; saveData(); renderFolders(); renderWords(); }
-function deleteFolder(id, e) { e.stopPropagation(); let all=[id,...folderTree.filter(f=>f.parentId===id).map(f=>f.id)]; if(confirm("폴더와 내부 데이터를 삭제합니다.")) { folderTree=folderTree.filter(f=>!all.includes(f.id)); words=words.filter(w=>!all.includes(w.folderId)); if(all.includes(activeFolderId)) activeFolderId=folderTree[0]?.id||''; saveData(); renderFolders(); renderWords(); } }
+function selectFolder(id,e){e.stopPropagation();stopAllWords();activeFolderId=id;localStorage.setItem('smart_active_folder_id',id);renderFolders();renderWords();if(window.innerWidth<768)closeSidebar();}
+function toggleFolderCollapse(id,e){e.stopPropagation();collapsedFolders.has(id)?collapsedFolders.delete(id):collapsedFolders.add(id);renderFolders();}
+function addRootFolder(){const n=prompt("새 메인 폴더명:");if(!n?.trim())return;let id='f_'+Date.now();folderTree.push({id,name:n.trim(),parentId:null});activeFolderId=id;saveData();renderFolders();renderWords();}
+function addSubFolder(pid,e){e.stopPropagation();let p=folderTree.find(f=>f.id===pid);const n=prompt(`[ ${p.name} ] 하위 폴더명:`);if(!n?.trim())return;let id='f_'+Date.now();folderTree.push({id,name:n.trim(),parentId:pid});activeFolderId=id;collapsedFolders.delete(pid);saveData();renderFolders();renderWords();}
+function renameFolder(id,e){e.stopPropagation();let f=folderTree.find(x=>x.id===id);if(!f)return;const n=prompt("새 폴더 이름:",f.name);if(n?.trim()&&n.trim()!==f.name){f.name=n.trim();saveData();renderFolders();}}
+function deleteFolder(id,e){e.stopPropagation();let all=[id,...folderTree.filter(f=>f.parentId===id).map(f=>f.id)];if(confirm("폴더와 내부 데이터를 삭제합니다.?")){folderTree=folderTree.filter(f=>!all.includes(f.id));words=words.filter(w=>!all.includes(w.folderId));if(all.includes(activeFolderId))activeFolderId=folderTree[0]?.id||'';saveData();renderFolders();renderWords();}}
+
+// ── 단어 이동 ──
+function dropWordToFolder(folderId,e){
+    e.preventDefault();e.stopPropagation();
+    const wId=parseInt(e.dataTransfer.getData('text/plain'));
+    if(!wId)return;
+    const w=words.find(x=>x.id===wId);
+    if(w&&w.folderId!==folderId){w.folderId=folderId;saveData();renderWords();}
+}
+function openMoveModal(wordId){
+    movingWordId=wordId;
+    const w=words.find(x=>x.id===wordId);
+    if(!w)return;
+    document.getElementById('moveWordLabel').textContent=`"${w.word}" 을(를) 이동할 폴더 선택`;
+    const list=document.getElementById('moveFolderList');
+    list.innerHTML=folderTree.map(f=>{
+        const parent=f.parentId?folderTree.find(x=>x.id===f.parentId):null;
+        const label=parent?`${parent.name} > ${f.name}`:f.name;
+        const isCur=f.id===w.folderId;
+        return `<button onclick="moveWordToFolder('${f.id}')" class="w-full text-left px-3 py-2.5 rounded-xl text-sm font-medium transition flex items-center gap-2 ${isCur?'bg-indigo-600 text-white cursor-default':'bg-slate-50 dark:bg-slate-700 hover:bg-indigo-50 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300'}">
+            <i class="fa-solid fa-folder${isCur?'-open':''} text-${isCur?'white':'indigo-400'}"></i>
+            <span>${label}</span>
+            ${isCur?'<span class="ml-auto text-xs">현재</span>':''}
+        </button>`;
+    }).join('');
+    document.getElementById('moveModal').classList.remove('hidden');
+}
+function moveWordToFolder(folderId){
+    const w=words.find(x=>x.id===movingWordId);
+    if(w&&w.folderId!==folderId){w.folderId=folderId;saveData();renderWords();}
+    closeMoveModal();
+}
+function closeMoveModal(){document.getElementById('moveModal').classList.add('hidden');movingWordId=null;}
 
 // ── 뷰 상태 ──
-function getWordsForCurrentView() {
-    let obj = folderTree.find(f => f.id === activeFolderId); if(!obj) return [];
-    let ids = [activeFolderId];
-    if (obj.parentId === null) folderTree.filter(f => f.parentId === obj.id).forEach(f => ids.push(f.id));
-    let list = words.filter(w => ids.includes(w.folderId));
-    if (sortMode==='alpha') list.sort((a,b) => a.word.localeCompare(b.word));
-    else if (sortMode==='oldest') list.sort((a,b) => a.id-b.id);
-    else list.sort((a,b) => b.id-a.id);
-    if (isHideMemorized) list = list.filter(w => !w.memorized);
+function getWordsForCurrentView(){
+    let obj=folderTree.find(f=>f.id===activeFolderId);if(!obj)return[];
+    let ids=[activeFolderId];
+    if(obj.parentId===null)folderTree.filter(f=>f.parentId===obj.id).forEach(f=>ids.push(f.id));
+    let list=words.filter(w=>ids.includes(w.folderId));
+    const filter=document.getElementById('wordFilterInput')?.value.trim().toLowerCase();
+    if(filter)list=list.filter(w=>w.word.toLowerCase().includes(filter)||w.meanings.some(m=>m.toLowerCase().includes(filter)));
+    if(sortMode==='alpha')list.sort((a,b)=>a.word.localeCompare(b.word));
+    else if(sortMode==='oldest')list.sort((a,b)=>a.id-b.id);
+    else list.sort((a,b)=>b.id-a.id);
+    if(isHideMemorized)list=list.filter(w=>!w.memorized);
     return list;
 }
 
-// ── 검색 ──
-async function searchMeaning() {
-    const txt = document.getElementById('searchInput')?.value.trim(); if(!txt){alert("입력하세요.");return;}
-    const ra = document.getElementById('searchResultArea');
-    ra.innerHTML = `<div class="mt-3 text-center py-4 text-slate-400 text-sm"><i class="fa-solid fa-spinner fa-spin mr-2"></i>검색 중...</div>`;
-    if(txt.includes(' ') && !txt.includes('/')) { buildEditorCard(txt,'','',true); return; }
-    let parts = txt.split('/').map(s=>s.trim()).filter(Boolean);
-    let wordPart = parts[0], customMeanings = parts.slice(1);
-    let phonetic='', exEng='', fetchedSyns='';
-    try { const r = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(wordPart)}`); if(r.ok){ const d=await r.json(); phonetic=d[0]?.phonetic||d[0]?.phonetics?.find(p=>p.text)?.text||''; exEng=d[0]?.meanings[0]?.definitions[0]?.example||''; fetchedSyns=(d[0]?.meanings[0]?.synonyms||[]).slice(0,4).join(', '); } } catch(e){}
+// ── Gemini 검색 ──
+async function searchMeaning(){
+    const txt=document.getElementById('searchInput')?.value.trim();if(!txt){alert("입력하세요.");return;}
+    const ra=document.getElementById('searchResultArea');
+    ra.innerHTML=`<div class="mt-3 text-center py-4 text-slate-400 text-sm"><i class="fa-solid fa-spinner fa-spin mr-2"></i>AI 분석 중...</div>`;
+    if(txt.includes(' ')&&!txt.includes('/')){buildEditorCard(txt,'','',true);return;}
+    let parts=txt.split('/').map(s=>s.trim()).filter(Boolean);
+    let wordPart=parts[0],customMeanings=parts.slice(1);
+    if(customMeanings.length>0){buildEditorCard(wordPart,'','',false,'',customMeanings,'');return;}
+
+    const key=getGeminiKey();
+    if(key){
+        try{
+            const prompt=`영어 단어 "${wordPart}"를 분석해 다음 JSON 형식으로만 응답하세요 (다른 텍스트 없이):
+{"phonetic":"발음기호","meanings":["한국어뜻1","한국어뜻2"],"synonyms":["뜻1유의어","뜻2유의어"],"examples":["예문1","예문2"],"extraForms":"파생형 예: n.form / adj.form"}`;
+            const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`,{
+                method:'POST',headers:{'Content-Type':'application/json'},
+                body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{temperature:0.1}})
+            });
+            if(res.ok){
+                const data=await res.json();
+                const raw=data.candidates[0].content.parts[0].text;
+                const json=JSON.parse(raw.replace(/```json\n?|\n?```/g,'').trim());
+                buildEditorCardFull(wordPart,json);
+                return;
+            }
+        }catch(e){console.warn('Gemini fallback:',e);}
+    }
+    // fallback: 구글 번역
+    let phonetic='',exEng='',fetchedSyns='';
+    try{const r=await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(wordPart)}`);if(r.ok){const d=await r.json();phonetic=d[0]?.phonetic||d[0]?.phonetics?.find(p=>p.text)?.text||'';exEng=d[0]?.meanings[0]?.definitions[0]?.example||'';fetchedSyns=(d[0]?.meanings[0]?.synonyms||[]).slice(0,4).join(', ');}}catch(e){}
     let koMean='';
-    if(customMeanings.length===0) { try { const r=await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=ko&dt=t&q=${encodeURIComponent(wordPart)}`); koMean=(await r.json())[0][0][0]||''; } catch(e){} }
-    buildEditorCard(wordPart, phonetic, koMean, false, exEng, customMeanings, fetchedSyns);
+    try{const r=await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=ko&dt=t&q=${encodeURIComponent(wordPart)}`);koMean=(await r.json())[0][0][0]||'';}catch(e){}
+    buildEditorCard(wordPart,phonetic,koMean,false,exEng,[],fetchedSyns);
 }
 
-function buildEditorCard(wordTxt, phonetic, koMean, isSentence, fetchedEx='', injectedMeanings=[], fetchedSyns='', isEditMode=false) {
-    currentActiveWord = wordTxt;
-    let meanHtml = injectedMeanings.length > 0
-        ? injectedMeanings.map((m,i) => `<div class="mean-item bg-slate-100/80 p-3 rounded-xl border border-slate-200 space-y-1.5 animate-fade-in"><div class="flex items-center gap-2"><span class="num-badge bg-indigo-600 text-white font-mono text-xs px-2 py-0.5 rounded font-bold">${i+1}</span><input type="text" value="${m}" class="mean-inp flex-1 px-3 py-1.5 border border-slate-300 rounded-lg text-sm bg-white font-bold text-slate-900 outline-none"><button onclick="this.parentElement.parentElement.remove();reindexMeanings();" class="text-slate-400 hover:text-rose-600 px-1"><i class="fa-solid fa-xmark"></i></button></div><div class="flex items-center gap-2 pl-7"><span class="text-[11px] font-extrabold text-purple-700">≒</span><input type="text" placeholder="유의어 (쉼표 구분)" class="syn-inp flex-1 px-2.5 py-1 text-xs border border-purple-200 bg-white rounded-lg focus:outline-none focus:border-purple-500 text-purple-950 font-medium"></div></div>`).join('')
-        : `<div class="mean-item bg-slate-100/80 p-3 rounded-xl border border-slate-200 space-y-1.5 animate-fade-in"><div class="flex items-center gap-2"><span class="num-badge bg-indigo-600 text-white font-mono text-xs px-2 py-0.5 rounded font-bold">1</span><input type="text" value="${koMean}" placeholder="첫 번째 뜻 입력" onkeydown="if(event.key==='Enter')saveActiveWord()" class="mean-inp flex-1 px-3 py-1.5 border border-slate-300 rounded-lg text-sm bg-white font-bold text-slate-900 outline-none"></div><div class="flex items-center gap-2 pl-7"><span class="text-[11px] font-extrabold text-purple-700">≒</span><input type="text" value="${fetchedSyns}" placeholder="유의어 (쉼표 구분)" onkeydown="if(event.key==='Enter')saveActiveWord()" class="syn-inp flex-1 px-2.5 py-1 text-xs border border-purple-200 bg-white rounded-lg focus:outline-none focus:border-purple-500 text-purple-950 font-medium"></div></div>`;
-    let titleBar = isEditMode
-        ? `<span class="text-amber-800 font-black flex items-center gap-1.5 text-sm"><i class="fa-solid fa-pen-to-square text-amber-600"></i> [ ${wordTxt} ] 수정 중...</span>`
-        : `<div class="flex items-baseline gap-2 overflow-hidden"><span class="text-xl font-black text-slate-900 truncate">${wordTxt}</span><span class="text-indigo-600 font-mono text-sm">${phonetic}</span></div>`;
-    let saveBtn = isEditMode
-        ? `<button onclick="saveActiveWord()" class="bg-amber-600 hover:bg-amber-700 text-white px-6 py-2.5 rounded-xl text-sm font-black shadow-md transition flex items-center gap-1.5"><i class="fa-solid fa-check"></i> 수정 완료</button>`
-        : `<button onclick="saveActiveWord()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-xl text-sm font-black shadow-md transition">⭐ 단어 저장</button>`;
-    document.getElementById('searchResultArea').innerHTML = `
-        <div class="${isEditMode?'bg-amber-50/95 border-2 border-amber-400/80':'bg-indigo-50/95 border border-indigo-200'} rounded-2xl p-4 mt-3 mb-2 shadow-md text-slate-800 animate-fade-in">
-            <div class="flex justify-between items-center mb-3 pb-2 border-b ${isEditMode?'border-amber-200/80':'border-indigo-100'}">${titleBar}<button onclick="doSpeak('${wordTxt.replace(/'/g,"\\'")}')" class="bg-white hover:bg-indigo-100 text-indigo-600 p-2 rounded-xl shadow-sm transition ml-2 shrink-0"><i class="fa-solid fa-volume-high"></i></button></div>
-            <div class="mb-3"><div class="flex justify-between items-center mb-2"><label class="text-xs font-bold text-slate-900">1. 뜻 & 유의어</label><button onclick="addMeaningInput()" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-2.5 py-1 rounded-lg font-bold shadow transition flex items-center gap-1"><i class="fa-solid fa-plus text-[10px]"></i> 뜻 추가</button></div><div id="meanGroup" class="space-y-2">${meanHtml}</div></div>
-            <div class="mb-3 bg-white p-3 rounded-xl border ${isEditMode?'border-amber-200':'border-indigo-100'}"><label class="text-xs font-bold text-slate-800 block mb-1">🔗 파생형 / 문법</label><input type="text" id="extraFormsInp" placeholder="예: n. serendipity / adv. serendipitously" class="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-slate-50 focus:bg-white focus:border-indigo-500 outline-none font-medium"></div>
-            <div class="mb-3 bg-white/80 p-3 rounded-xl border ${isEditMode?'border-amber-200':'border-indigo-100'}"><div class="flex justify-between items-center mb-2"><label class="text-xs font-bold text-slate-700 flex items-center gap-1.5 cursor-pointer"><input type="checkbox" id="useExCheck" checked onclick="toggleExampleInputs()" class="accent-indigo-600 w-4 h-4"><span>✍️ 예문 저장</span></label><button onclick="addExampleInput()" id="addExBtn" class="bg-white border border-slate-300 text-slate-700 text-xs px-2.5 py-1 rounded-lg font-bold transition flex items-center gap-1"><i class="fa-solid fa-plus text-[10px]"></i> 예문 추가</button></div><div id="exGroup" class="space-y-1.5"><div class="flex items-center gap-2 ex-item"><span class="ex-badge bg-slate-300 text-slate-700 font-mono text-xs px-2 py-1 rounded font-bold">1</span><input type="text" value="${isSentence?wordTxt:fetchedEx}" placeholder="첫 번째 예문" onkeydown="if(event.key==='Enter')saveActiveWord()" class="ex-inp flex-1 px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-white outline-none"></div></div></div>
-            <div class="flex justify-end gap-2"><button onclick="document.getElementById('searchResultArea').innerHTML='';editingWordId=null;" class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-4 py-2.5 rounded-xl text-sm font-bold transition">닫기</button>${saveBtn}</div>
+function buildEditorCardFull(word, json){
+    currentActiveWord=word;
+    const meanHtml=json.meanings.map((m,i)=>{
+        const s=json.synonyms?.[i]||'';
+        return `<div class="mean-item bg-slate-100/80 dark:bg-slate-700/50 p-3 rounded-xl border border-slate-200 dark:border-slate-600 space-y-1.5 animate-fade-in">
+            <div class="flex items-center gap-2"><span class="num-badge bg-indigo-600 text-white font-mono text-xs px-2 py-0.5 rounded font-bold">${i+1}</span>
+            <input type="text" value="${m}" class="mean-inp flex-1 px-3 py-1.5 border border-slate-300 dark:border-slate-500 rounded-lg text-sm bg-white dark:bg-slate-700 font-bold text-slate-900 dark:text-slate-100 outline-none"></div>
+            <div class="flex items-center gap-2 pl-7"><span class="text-[11px] font-extrabold text-purple-700">≒</span>
+            <input type="text" value="${s}" placeholder="유의어" class="syn-inp flex-1 px-2.5 py-1 text-xs border border-purple-200 dark:border-purple-700 bg-white dark:bg-slate-700 rounded-lg focus:outline-none focus:border-purple-500 text-purple-950 dark:text-purple-300 font-medium"></div>
+        </div>`;
+    }).join('');
+    document.getElementById('searchResultArea').innerHTML=`
+        <div class="bg-indigo-50/95 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-700 rounded-2xl p-4 mt-3 mb-2 shadow-md animate-fade-in">
+            <div class="flex justify-between items-center mb-3 pb-2 border-b border-indigo-100 dark:border-indigo-700">
+                <div class="flex items-baseline gap-2"><span class="text-xl font-black text-slate-900 dark:text-white">${word}</span><span class="text-indigo-600 font-mono text-sm">${json.phonetic||''}</span><span class="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-bold">AI</span></div>
+                <button onclick="doSpeak('${word.replace(/'/g,"\\'")}' )" class="bg-white dark:bg-slate-700 hover:bg-indigo-100 text-indigo-600 p-2 rounded-xl shadow-sm transition ml-2 shrink-0"><i class="fa-solid fa-volume-high"></i></button>
+            </div>
+            <div class="mb-3"><div class="flex justify-between items-center mb-2"><label class="text-xs font-bold text-slate-900 dark:text-slate-100">뜻 & 유의어</label><button onclick="addMeaningInput()" class="bg-indigo-600 text-white text-xs px-2.5 py-1 rounded-lg font-bold transition flex items-center gap-1"><i class="fa-solid fa-plus text-[10px]"></i> 추가</button></div><div id="meanGroup" class="space-y-2">${meanHtml}</div></div>
+            <div class="mb-3 bg-white dark:bg-slate-700 p-3 rounded-xl border border-indigo-100 dark:border-slate-600"><label class="text-xs font-bold text-slate-800 dark:text-slate-200 block mb-1">🔗 파생형</label><input type="text" id="extraFormsInp" value="${json.extraForms||''}" class="w-full px-3 py-1.5 border border-slate-300 dark:border-slate-500 rounded-lg text-xs bg-slate-50 dark:bg-slate-600 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-500 focus:border-indigo-500 outline-none font-medium"></div>
+            <div class="mb-3 bg-white/80 dark:bg-slate-700/80 p-3 rounded-xl border border-indigo-100 dark:border-slate-600"><div class="flex justify-between items-center mb-2"><label class="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 cursor-pointer"><input type="checkbox" id="useExCheck" checked onclick="toggleExampleInputs()" class="accent-indigo-600 w-4 h-4"><span>✍️ 예문 저장</span></label><button onclick="addExampleInput()" id="addExBtn" class="bg-white dark:bg-slate-600 border border-slate-300 dark:border-slate-500 text-slate-700 dark:text-slate-300 text-xs px-2 py-1 rounded-lg font-bold transition flex items-center gap-1"><i class="fa-solid fa-plus text-[10px]"></i> 추가</button></div><div id="exGroup" class="space-y-1.5">${(json.examples||[]).map((ex,idx)=>`<div class="flex items-center gap-2 ex-item"><span class="ex-badge bg-slate-300 text-slate-700 font-mono text-xs px-2 py-1 rounded font-bold">${idx+1}</span><input type="text" value="${ex.replace(/"/g,'&quot;')}" onkeydown="if(event.key==='Enter')saveActiveWord()" class="ex-inp flex-1 px-3 py-1.5 border border-slate-300 dark:border-slate-500 rounded-lg text-xs bg-white dark:bg-slate-600 dark:text-slate-200 outline-none"></div>`).join('')||`<div class="flex items-center gap-2 ex-item"><span class="ex-badge bg-slate-300 text-slate-700 font-mono text-xs px-2 py-1 rounded font-bold">1</span><input type="text" placeholder="예문 입력" onkeydown="if(event.key==='Enter')saveActiveWord()" class="ex-inp flex-1 px-3 py-1.5 border border-slate-300 dark:border-slate-500 rounded-lg text-xs bg-white dark:bg-slate-600 outline-none"></div>`}</div></div>
+            <div class="flex justify-end gap-2"><button onclick="document.getElementById('searchResultArea').innerHTML='';editingWordId=null;" class="bg-slate-200 dark:bg-slate-600 hover:bg-slate-300 text-slate-700 dark:text-slate-300 px-4 py-2 rounded-xl text-sm font-bold transition">닫기</button><button onclick="saveActiveWord()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-xl text-sm font-black shadow-md transition">⭐ 단어 저장</button></div>
         </div>`;
     setTimeout(()=>document.querySelector('.mean-inp')?.focus(),50);
 }
 
-function addMeaningInput(){const w=document.getElementById('meanGroup');const c=w.children.length+1;const d=document.createElement('div');d.className="mean-item bg-slate-100/80 p-3 rounded-xl border border-slate-200 space-y-1.5 animate-fade-in";d.innerHTML=`<div class="flex items-center gap-2"><span class="num-badge bg-indigo-600 text-white font-mono text-xs px-2 py-0.5 rounded font-bold">${c}</span><input type="text" placeholder="${c}번째 뜻 입력" onkeydown="if(event.key==='Enter')saveActiveWord()" class="mean-inp flex-1 px-3 py-1.5 border border-slate-300 rounded-lg text-sm bg-white font-bold text-slate-900 outline-none focus:border-indigo-600"><button onclick="this.parentElement.parentElement.remove();reindexMeanings();" class="text-slate-400 hover:text-rose-600 px-1"><i class="fa-solid fa-xmark"></i></button></div><div class="flex items-center gap-2 pl-7"><span class="text-[11px] font-extrabold text-purple-700">≒</span><input type="text" placeholder="유의어" onkeydown="if(event.key==='Enter')saveActiveWord()" class="syn-inp flex-1 px-2.5 py-1 text-xs border border-purple-200 bg-white rounded-lg focus:outline-none focus:border-purple-500 text-purple-950 font-medium"></div>`;w.appendChild(d);d.querySelector('.mean-inp').focus();}
-function addExampleInput(){const w=document.getElementById('exGroup');const c=w.children.length+1;const d=document.createElement('div');d.className="flex items-center gap-2 ex-item";d.innerHTML=`<span class="ex-badge bg-slate-300 text-slate-700 font-mono text-xs px-2 py-1 rounded font-bold">${c}</span><input type="text" placeholder="${c}번째 예문" onkeydown="if(event.key==='Enter')saveActiveWord()" class="ex-inp flex-1 px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-white outline-none"><button onclick="this.parentElement.remove();reindexExamples();" class="text-slate-400 hover:text-rose-600 px-1"><i class="fa-solid fa-xmark"></i></button>`;w.appendChild(d);d.querySelector('input').focus();}
-function reindexMeanings(){document.querySelectorAll('#meanGroup .mean-item').forEach((el,i)=>{el.querySelector('.num-badge').innerText=i+1;el.querySelector('.mean-inp').placeholder=`${i+1}번째 뜻 입력`;});}
+function buildEditorCard(wordTxt,phonetic,koMean,isSentence,fetchedEx='',injectedMeanings=[],fetchedSyns='',isEditMode=false){
+    currentActiveWord=wordTxt;
+    const darkCls='dark:bg-slate-700/50 dark:border-slate-600';
+    const inpCls='border border-slate-300 dark:border-slate-500 bg-white dark:bg-slate-700 dark:text-slate-100';
+    let meanHtml=injectedMeanings.length>0
+        ?injectedMeanings.map((m,i)=>`<div class="mean-item bg-slate-100/80 ${darkCls} p-3 rounded-xl border border-slate-200 space-y-1.5 animate-fade-in"><div class="flex items-center gap-2"><span class="num-badge bg-indigo-600 text-white font-mono text-xs px-2 py-0.5 rounded font-bold">${i+1}</span><input type="text" value="${m}" class="mean-inp flex-1 px-3 py-1.5 ${inpCls} rounded-lg text-sm font-bold outline-none"><button onclick="this.parentElement.parentElement.remove();reindexMeanings();" class="text-slate-400 hover:text-rose-600 px-1"><i class="fa-solid fa-xmark"></i></button></div><div class="flex items-center gap-2 pl-7"><span class="text-[11px] font-extrabold text-purple-700">≒</span><input type="text" placeholder="유의어" class="syn-inp flex-1 px-2.5 py-1 text-xs border border-purple-200 dark:border-purple-700 bg-white dark:bg-slate-700 dark:text-purple-300 rounded-lg focus:outline-none focus:border-purple-500 text-purple-950 font-medium"></div></div>`).join('')
+        :`<div class="mean-item bg-slate-100/80 ${darkCls} p-3 rounded-xl border border-slate-200 space-y-1.5 animate-fade-in"><div class="flex items-center gap-2"><span class="num-badge bg-indigo-600 text-white font-mono text-xs px-2 py-0.5 rounded font-bold">1</span><input type="text" value="${koMean}" placeholder="뜻 입력" onkeydown="if(event.key==='Enter')saveActiveWord()" class="mean-inp flex-1 px-3 py-1.5 ${inpCls} rounded-lg text-sm font-bold outline-none"></div><div class="flex items-center gap-2 pl-7"><span class="text-[11px] font-extrabold text-purple-700">≒</span><input type="text" value="${fetchedSyns}" placeholder="유의어" onkeydown="if(event.key==='Enter')saveActiveWord()" class="syn-inp flex-1 px-2.5 py-1 text-xs border border-purple-200 dark:border-purple-700 bg-white dark:bg-slate-700 dark:text-purple-300 rounded-lg focus:outline-none focus:border-purple-500 text-purple-950 font-medium"></div></div>`;
+    let titleBar=isEditMode?`<span class="text-amber-800 dark:text-amber-300 font-black flex items-center gap-1.5 text-sm"><i class="fa-solid fa-pen-to-square text-amber-600"></i> [ ${wordTxt} ] 수정 중...</span>`:`<div class="flex items-baseline gap-2"><span class="text-xl font-black text-slate-900 dark:text-white truncate">${wordTxt}</span><span class="text-indigo-600 font-mono text-sm">${phonetic}</span></div>`;
+    let saveBtn=isEditMode?`<button onclick="saveActiveWord()" class="bg-amber-600 hover:bg-amber-700 text-white px-6 py-2 rounded-xl text-sm font-black shadow-md transition flex items-center gap-1.5"><i class="fa-solid fa-check"></i> 수정 완료</button>`:`<button onclick="saveActiveWord()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-xl text-sm font-black shadow-md transition">⭐ 단어 저장</button>`;
+    document.getElementById('searchResultArea').innerHTML=`
+        <div class="${isEditMode?'bg-amber-50/95 dark:bg-amber-950/30 border-2 border-amber-400/80':'bg-indigo-50/95 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-700'} rounded-2xl p-4 mt-3 mb-2 shadow-md animate-fade-in">
+            <div class="flex justify-between items-center mb-3 pb-2 border-b ${isEditMode?'border-amber-200/80':'border-indigo-100 dark:border-indigo-700'}">${titleBar}<button onclick="doSpeak('${wordTxt.replace(/'/g,"\\'")}' )" class="bg-white dark:bg-slate-700 hover:bg-indigo-100 text-indigo-600 p-2 rounded-xl shadow-sm transition ml-2 shrink-0"><i class="fa-solid fa-volume-high"></i></button></div>
+            <div class="mb-3"><div class="flex justify-between items-center mb-2"><label class="text-xs font-bold text-slate-900 dark:text-slate-100">뜻 & 유의어</label><button onclick="addMeaningInput()" class="bg-indigo-600 text-white text-xs px-2.5 py-1 rounded-lg font-bold flex items-center gap-1"><i class="fa-solid fa-plus text-[10px]"></i> 추가</button></div><div id="meanGroup" class="space-y-2">${meanHtml}</div></div>
+            <div class="mb-3 bg-white dark:bg-slate-700 p-3 rounded-xl border ${isEditMode?'border-amber-200':'border-indigo-100 dark:border-slate-600'}"><label class="text-xs font-bold text-slate-800 dark:text-slate-200 block mb-1">🔗 파생형</label><input type="text" id="extraFormsInp" placeholder="예: n. form / adj. form" class="w-full px-3 py-1.5 border border-slate-300 dark:border-slate-500 rounded-lg text-xs bg-slate-50 dark:bg-slate-600 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-500 focus:border-indigo-500 outline-none font-medium"></div>
+            <div class="mb-3 bg-white/80 dark:bg-slate-700/80 p-3 rounded-xl border ${isEditMode?'border-amber-200':'border-indigo-100 dark:border-slate-600'}"><div class="flex justify-between items-center mb-2"><label class="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 cursor-pointer"><input type="checkbox" id="useExCheck" checked onclick="toggleExampleInputs()" class="accent-indigo-600 w-4 h-4"><span>✍️ 예문</span></label><button onclick="addExampleInput()" id="addExBtn" class="bg-white dark:bg-slate-600 border border-slate-300 dark:border-slate-500 text-slate-700 dark:text-slate-300 text-xs px-2 py-1 rounded-lg font-bold flex items-center gap-1"><i class="fa-solid fa-plus text-[10px]"></i> 추가</button></div><div id="exGroup" class="space-y-1.5"><div class="flex items-center gap-2 ex-item"><span class="ex-badge bg-slate-300 text-slate-700 font-mono text-xs px-2 py-1 rounded font-bold">1</span><input type="text" value="${isSentence?wordTxt:fetchedEx}" placeholder="예문 입력" onkeydown="if(event.key==='Enter')saveActiveWord()" class="ex-inp flex-1 px-3 py-1.5 border border-slate-300 dark:border-slate-500 rounded-lg text-xs bg-white dark:bg-slate-600 dark:text-slate-200 outline-none"></div></div></div>
+            <div class="flex justify-end gap-2"><button onclick="document.getElementById('searchResultArea').innerHTML='';editingWordId=null;" class="bg-slate-200 dark:bg-slate-600 hover:bg-slate-300 text-slate-700 dark:text-slate-300 px-4 py-2 rounded-xl text-sm font-bold transition">닫기</button>${saveBtn}</div>
+        </div>`;
+    setTimeout(()=>document.querySelector('.mean-inp')?.focus(),50);
+}
+
+function addMeaningInput(){const w=document.getElementById('meanGroup');const c=w.children.length+1;const d=document.createElement('div');d.className="mean-item bg-slate-100/80 dark:bg-slate-700/50 p-3 rounded-xl border border-slate-200 dark:border-slate-600 space-y-1.5 animate-fade-in";d.innerHTML=`<div class="flex items-center gap-2"><span class="num-badge bg-indigo-600 text-white font-mono text-xs px-2 py-0.5 rounded font-bold">${c}</span><input type="text" placeholder="${c}번째 뜻" onkeydown="if(event.key==='Enter')saveActiveWord()" class="mean-inp flex-1 px-3 py-1.5 border border-slate-300 dark:border-slate-500 rounded-lg text-sm bg-white dark:bg-slate-700 dark:text-slate-100 font-bold outline-none focus:border-indigo-600"><button onclick="this.parentElement.parentElement.remove();reindexMeanings();" class="text-slate-400 hover:text-rose-600 px-1"><i class="fa-solid fa-xmark"></i></button></div><div class="flex items-center gap-2 pl-7"><span class="text-[11px] font-extrabold text-purple-700">≒</span><input type="text" placeholder="유의어" onkeydown="if(event.key==='Enter')saveActiveWord()" class="syn-inp flex-1 px-2.5 py-1 text-xs border border-purple-200 dark:border-purple-700 bg-white dark:bg-slate-700 dark:text-purple-300 rounded-lg focus:outline-none focus:border-purple-500 text-purple-950 font-medium"></div>`;w.appendChild(d);d.querySelector('.mean-inp').focus();}
+function addExampleInput(){const w=document.getElementById('exGroup');const c=w.children.length+1;const d=document.createElement('div');d.className="flex items-center gap-2 ex-item";d.innerHTML=`<span class="ex-badge bg-slate-300 text-slate-700 font-mono text-xs px-2 py-1 rounded font-bold">${c}</span><input type="text" placeholder="${c}번째 예문" onkeydown="if(event.key==='Enter')saveActiveWord()" class="ex-inp flex-1 px-3 py-1.5 border border-slate-300 dark:border-slate-500 rounded-lg text-xs bg-white dark:bg-slate-600 dark:text-slate-200 outline-none"><button onclick="this.parentElement.remove();reindexExamples();" class="text-slate-400 hover:text-rose-600 px-1"><i class="fa-solid fa-xmark"></i></button>`;w.appendChild(d);d.querySelector('input').focus();}
+function reindexMeanings(){document.querySelectorAll('#meanGroup .mean-item').forEach((el,i)=>{el.querySelector('.num-badge').innerText=i+1;el.querySelector('.mean-inp').placeholder=`${i+1}번째 뜻`;});}
 function reindexExamples(){document.querySelectorAll('#exGroup .ex-item').forEach((el,i)=>{el.querySelector('.ex-badge').innerText=i+1;el.querySelector('input').placeholder=`${i+1}번째 예문`;});}
 function toggleExampleInputs(){const on=document.getElementById('useExCheck').checked;document.getElementById('exGroup').style.display=on?'block':'none';document.getElementById('addExBtn').style.display=on?'inline-flex':'none';}
 
-function openWordEditor(id) {
-    let item = words.find(w=>w.id===id); if(!item) return; editingWordId=item.id;
+function openWordEditor(id){
+    let item=words.find(w=>w.id===id);if(!item)return;editingWordId=item.id;
     document.getElementById('mainArea').scrollTop=0;
     buildEditorCard(item.word,'','',false,'',item.meanings,'',true);
     setTimeout(()=>{
         document.querySelectorAll('#meanGroup .mean-item').forEach((row,idx)=>{let s=row.querySelector('.syn-inp');if(s&&item.synonyms[idx])s.value=item.synonyms[idx];});
         let ext=document.getElementById('extraFormsInp');if(ext)ext.value=item.extraForms||'';
-        const eg=document.getElementById('exGroup');if(eg)eg.innerHTML=item.examples.map((ex,idx)=>`<div class="flex items-center gap-2 ex-item"><span class="ex-badge bg-slate-300 text-slate-700 font-mono text-xs px-2 py-1 rounded font-bold">${idx+1}</span><input type="text" value="${ex.replace(/"/g,'&quot;')}" class="ex-inp flex-1 px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-white outline-none"><button onclick="this.parentElement.remove();reindexExamples();" class="text-slate-400 hover:text-rose-600 px-1"><i class="fa-solid fa-xmark"></i></button></div>`).join('');
+        const eg=document.getElementById('exGroup');if(eg)eg.innerHTML=item.examples.map((ex,idx)=>`<div class="flex items-center gap-2 ex-item"><span class="ex-badge bg-slate-300 text-slate-700 font-mono text-xs px-2 py-1 rounded font-bold">${idx+1}</span><input type="text" value="${ex.replace(/"/g,'&quot;')}" class="ex-inp flex-1 px-3 py-1.5 border border-slate-300 dark:border-slate-500 rounded-lg text-xs bg-white dark:bg-slate-600 dark:text-slate-200 outline-none"><button onclick="this.parentElement.remove();reindexExamples();" class="text-slate-400 hover:text-rose-600 px-1"><i class="fa-solid fa-xmark"></i></button></div>`).join('');
     },50);
 }
 
-function saveActiveWord() {
+function saveActiveWord(){
     let mArr=[],sArr=[];
     document.querySelectorAll('#meanGroup .mean-item').forEach(item=>{let m=item.querySelector('.mean-inp').value.trim(),s=item.querySelector('.syn-inp').value.trim();if(m){mArr.push(m);sArr.push(s);}});
     if(mArr.length===0){alert("뜻을 1개 이상 입력하세요.");return;}
-    let eArr=[];
-    if(document.getElementById('useExCheck')?.checked) document.querySelectorAll('#exGroup .ex-inp').forEach(i=>{if(i.value.trim())eArr.push(i.value.trim());});
+    let eArr=[];if(document.getElementById('useExCheck')?.checked)document.querySelectorAll('#exGroup .ex-inp').forEach(i=>{if(i.value.trim())eArr.push(i.value.trim());});
     let extra=document.getElementById('extraFormsInp')?.value.trim()||'';
     if(editingWordId){let t=words.find(w=>w.id===editingWordId);if(t){t.meanings=mArr;t.synonyms=sArr;t.examples=eArr;t.extraForms=extra;}}
     else words.unshift({id:Date.now(),folderId:activeFolderId,word:currentActiveWord,meanings:mArr,synonyms:sArr,extraForms:extra,examples:eArr,memorized:false});
@@ -439,40 +538,44 @@ function saveActiveWord() {
     document.getElementById('searchResultArea').innerHTML='';
 }
 
-// ── 단어 카드 ──
-function renderWords() {
-    const grid = document.getElementById('wordGridArea'); if(!grid) return;
-    let list = getWordsForCurrentView();
-    let isRootView = folderTree.find(f=>f.id===activeFolderId)?.parentId===null;
+// ── 단어 카드 렌더링 ──
+function renderWords(){
+    const grid=document.getElementById('wordGridArea');if(!grid)return;
+    let list=getWordsForCurrentView();
+    let isRootView=folderTree.find(f=>f.id===activeFolderId)?.parentId===null;
     if(list.length===0){
-        grid.innerHTML=`<div class="col-span-full py-16 text-center text-slate-400 bg-white rounded-2xl border border-dashed border-slate-200 font-medium">${isHideMemorized?'모든 단어를 암기하셨습니다! 🎉':'단어가 없습니다. 위에서 검색하여 추가하세요!'}</div>`;
+        grid.innerHTML=`<div class="col-span-2 py-16 text-center text-slate-400 dark:text-slate-500 bg-white dark:bg-slate-800 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 font-medium">${isHideMemorized?'모든 단어를 암기하셨습니다! 🎉':'단어가 없습니다. 위에서 검색하여 추가하세요!'}</div>`;
         return;
     }
-    const blurCss = isBlurMode ? 'filter blur-sm hover:blur-none transition duration-300 select-none bg-indigo-100/60 rounded px-1' : '';
-    grid.innerHTML = list.map(w => {
-        let rf = folderTree.find(f=>f.id===w.folderId);
-        let badge = (isRootView && rf && rf.id!==activeFolderId) ? rf.name : '';
-        return `<div class="bg-white border ${w.memorized?'border-emerald-300 bg-emerald-50/25':'border-slate-200 hover:border-indigo-300'} rounded-2xl p-4 shadow-sm hover:shadow-md transition flex flex-col justify-between">
+    const blurCss=isBlurMode?'filter blur-sm hover:blur-none transition duration-300 select-none bg-indigo-100/60 rounded px-1':'';
+    grid.innerHTML=list.map(w=>{
+        let rf=folderTree.find(f=>f.id===w.folderId);
+        let badge=(isRootView&&rf&&rf.id!==activeFolderId)?rf.name:'';
+        return `<div class="word-card bg-white dark:bg-slate-800 border ${w.memorized?'border-emerald-300 dark:border-emerald-700 bg-emerald-50/25 dark:bg-emerald-950/20':'border-slate-200 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-indigo-600'} rounded-2xl p-3 shadow-sm hover:shadow-md transition flex flex-col justify-between"
+            draggable="true"
+            ondragstart="event.dataTransfer.setData('text/plain','${w.id}')">
             <div>
-                <div class="flex items-start justify-between gap-2 mb-3">
-                    <div class="flex items-center gap-1.5 min-w-0 flex-1">
-                        <span class="font-extrabold text-lg text-slate-900 break-words select-text">${w.word}</span>
-                        <button onclick="doSpeak('${w.word.replace(/'/g,"\\'")}')" class="text-slate-400 hover:text-indigo-600 p-1 shrink-0"><i class="fa-solid fa-volume-high text-sm"></i></button>
+                <div class="flex items-start justify-between gap-1.5 mb-2">
+                    <div class="flex items-center gap-1 min-w-0 flex-1">
+                        <span class="font-extrabold text-base text-slate-900 dark:text-white break-words select-text leading-tight">${w.word}</span>
+                        <button onclick="doSpeak('${w.word.replace(/'/g,"\\'")}')" class="text-slate-400 hover:text-indigo-600 p-0.5 shrink-0"><i class="fa-solid fa-volume-high text-xs"></i></button>
                     </div>
-                    <button onclick="toggleCardMemorized(${w.id})" class="shrink-0 text-[11px] px-2 py-1 rounded-full font-extrabold transition flex items-center gap-1 shadow-sm ${w.memorized?'bg-emerald-600 text-white hover:bg-emerald-700':'bg-slate-100 text-slate-400 hover:bg-slate-200'}">
-                        <i class="fa-solid ${w.memorized?'fa-check':'fa-brain'}"></i><span>${w.memorized?'암기완료':'미암기'}</span>
+                    <button onclick="toggleCardMemorized(${w.id})" class="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full font-extrabold transition flex items-center gap-0.5 ${w.memorized?'bg-emerald-600 text-white':'bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-500'}">
+                        <i class="fa-solid ${w.memorized?'fa-check':'fa-brain'} text-[8px]"></i>
                     </button>
                 </div>
-                <div onclick="openWordEditor(${w.id})" class="w-full bg-slate-50 hover:bg-indigo-50/50 p-3 rounded-xl cursor-pointer border border-transparent hover:border-indigo-100 transition space-y-1.5 group/edit text-left">
-                    ${w.meanings.map((m,idx)=>{let syn=w.synonyms[idx];let synHtml=(!isHideExtra&&syn)?`<div class="text-[11px] font-bold text-purple-700 pl-6 mt-0.5"><span class="bg-purple-100/80 px-1.5 py-0.5 rounded text-[9px] font-mono mr-1">유의어</span>${syn}</div>`:'';return `<div><div class="flex items-start gap-1.5 text-xs font-bold text-slate-900"><span class="bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded text-[9px] font-mono shrink-0 mt-0.5">${idx+1}</span><span class="${blurCss} break-all flex-1">${m}</span></div>${synHtml}</div>`;}).join('')}
-                    ${(!isHideExtra&&w.extraForms)?`<div class="pt-1.5 border-t border-slate-200/60 text-[11px] text-slate-600"><span class="bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded text-[9px] font-mono mr-1">파생</span>${w.extraForms}</div>`:''}
-                    <div class="text-[10px] text-slate-400 group-hover/edit:text-indigo-600 text-right opacity-0 group-hover/edit:opacity-100 transition"><i class="fa-solid fa-pen"></i> 편집</div>
+                <div onclick="openWordEditor(${w.id})" class="w-full bg-slate-50 dark:bg-slate-700/50 hover:bg-indigo-50/50 dark:hover:bg-indigo-900/20 p-2 rounded-xl cursor-pointer border border-transparent hover:border-indigo-100 dark:hover:border-indigo-800 transition space-y-1 text-left">
+                    ${w.meanings.map((m,idx)=>{let syn=w.synonyms[idx];let synHtml=(!isHideExtra&&syn)?`<div class="text-[10px] font-bold text-purple-700 dark:text-purple-400 pl-5 mt-0.5"><span class="bg-purple-100 dark:bg-purple-900/50 px-1 py-0.5 rounded text-[8px] font-mono mr-1">유의어</span>${syn}</div>`:'';return `<div><div class="flex items-start gap-1 text-[11px] font-bold text-slate-900 dark:text-slate-100"><span class="bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 px-1.5 py-0.5 rounded text-[8px] font-mono shrink-0 mt-0.5">${idx+1}</span><span class="${blurCss} break-all flex-1 leading-snug">${m}</span></div>${synHtml}</div>`;}).join('')}
+                    ${(!isHideExtra&&w.extraForms)?`<div class="pt-1 border-t border-slate-200/60 dark:border-slate-600/60 text-[10px] text-slate-500 dark:text-slate-400"><span class="bg-slate-200 dark:bg-slate-600 text-slate-600 dark:text-slate-300 px-1 py-0.5 rounded text-[8px] font-mono mr-1">파생</span>${w.extraForms}</div>`:''}
                 </div>
-                ${w.examples.length>0?`<div class="mt-2.5 pt-2.5 border-t border-slate-100 space-y-1.5"><span class="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Examples</span>${w.examples.map((ex,idx)=>`<div class="flex items-start justify-between gap-1 bg-slate-50/80 p-2 rounded-xl group/ex border border-transparent hover:border-indigo-100"><div class="flex items-start gap-1.5 flex-1"><span class="text-[9px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded font-mono mt-0.5">${idx+1}</span><span class="text-xs text-slate-600 italic leading-relaxed select-text break-all flex-1">${ex}</span></div><button onclick="doSpeak('${ex.replace(/'/g,"\\'")}')" class="text-slate-400 hover:text-indigo-600 p-1 opacity-0 group-hover/ex:opacity-100 shrink-0"><i class="fa-solid fa-volume-high text-xs"></i></button></div>`).join('')}</div>`:''}
+                ${w.examples.length>0?`<div class="mt-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-700 space-y-1">${w.examples.slice(0,1).map((ex,idx)=>`<div class="flex items-start gap-1 group/ex"><span class="text-[8px] bg-slate-200 dark:bg-slate-600 text-slate-600 dark:text-slate-300 px-1 py-0.5 rounded font-mono mt-0.5 shrink-0">${idx+1}</span><span class="text-[10px] text-slate-500 dark:text-slate-400 italic leading-snug select-text break-all flex-1">${ex}</span><button onclick="doSpeak('${ex.replace(/'/g,"\\'")}')" class="text-slate-400 hover:text-indigo-600 p-0.5 opacity-0 group-hover/ex:opacity-100 shrink-0"><i class="fa-solid fa-volume-high text-[9px]"></i></button></div>`).join('')}</div>`:''}
             </div>
-            <div class="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between">
-                <div>${badge?`<span class="text-[10px] font-extrabold text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100">📁 ${badge}</span>`:''}</div>
-                <button onclick="deleteWord(${w.id})" class="text-slate-300 hover:text-rose-500 text-xs transition flex items-center gap-1 font-medium ml-auto"><i class="fa-solid fa-trash-can"></i> 삭제</button>
+            <div class="mt-2 pt-1.5 border-t border-slate-100 dark:border-slate-700 flex items-center justify-between">
+                <div>${badge?`<span class="text-[9px] font-extrabold text-indigo-500 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/50 px-1.5 py-0.5 rounded border border-indigo-100 dark:border-indigo-800">📁 ${badge}</span>`:''}</div>
+                <div class="flex items-center gap-1 ml-auto">
+                    <button onclick="openMoveModal(${w.id})" class="text-slate-300 dark:text-slate-600 hover:text-indigo-500 dark:hover:text-indigo-400 text-[10px] transition" title="폴더 이동"><i class="fa-solid fa-folder-open"></i></button>
+                    <button onclick="deleteWord(${w.id})" class="text-slate-300 dark:text-slate-600 hover:text-rose-500 text-[10px] transition"><i class="fa-solid fa-trash-can"></i></button>
+                </div>
             </div>
         </div>`;
     }).join('');
@@ -480,10 +583,10 @@ function renderWords() {
 
 function deleteWord(id){words=words.filter(w=>w.id!==id);saveData();renderWords();}
 function toggleCardMemorized(id){let item=words.find(w=>w.id===id);if(!item)return;item.memorized=!item.memorized;saveData();renderWords();}
-function toggleHideExtra(){isHideExtra=!isHideExtra;const b=document.getElementById('hideExtraBtn');b.innerHTML=isHideExtra?`<i class="fa-solid fa-file-circle-minus text-purple-600"></i> <span class="text-purple-600 font-extrabold">부가정보</span>`:`<i class="fa-solid fa-file-circle-plus text-purple-600"></i> <span>부가정보</span>`;b.classList.toggle('bg-purple-50',isHideExtra);b.classList.toggle('border-purple-200',isHideExtra);renderWords();}
-function toggleHideMemorized(){isHideMemorized=!isHideMemorized;const b=document.getElementById('hideMemBtn');b.innerHTML=isHideMemorized?`<i class="fa-solid fa-eye-slash text-rose-600"></i> <span class="text-rose-600 font-extrabold">암기숨김</span>`:`<i class="fa-solid fa-eye text-emerald-600"></i> <span>암기숨김</span>`;b.classList.toggle('bg-rose-50',isHideMemorized);b.classList.toggle('border-rose-300',isHideMemorized);renderWords();}
-function toggleBlurMode(){isBlurMode=!isBlurMode;const b=document.getElementById('blurBtn');b.innerHTML=isBlurMode?`<i class="fa-solid fa-eye text-indigo-600"></i> <span class="text-indigo-600 font-bold">뜻가리기</span>`:`<i class="fa-solid fa-eye-slash text-slate-400"></i> <span>뜻가리기</span>`;b.classList.toggle('border-indigo-300',isBlurMode);b.classList.toggle('bg-indigo-50',isBlurMode);renderWords();}
-function toggleSortMode(){const b=document.getElementById('sortBtn');if(sortMode==='newest'){sortMode='oldest';b.innerHTML=`<i class="fa-solid fa-arrow-up-1-9 text-indigo-600"></i> <span class="text-indigo-600 font-extrabold">오래된순</span>`;}else if(sortMode==='oldest'){sortMode='alpha';b.innerHTML=`<i class="fa-solid fa-arrow-down-z-a text-purple-600"></i> <span class="text-purple-600 font-extrabold">A-Z순</span>`;}else{sortMode='newest';b.innerHTML=`<i class="fa-solid fa-arrow-down-9-1 text-slate-500"></i> <span>최신순</span>`;}renderWords();}
+function toggleHideExtra(){isHideExtra=!isHideExtra;const b=document.getElementById('hideExtraBtn');b.innerHTML=isHideExtra?`<span class="text-purple-600 dark:text-purple-400 font-extrabold">부가정보 숨김</span>`:`부가정보`;b.classList.toggle('bg-purple-50',isHideExtra);b.classList.toggle('dark:bg-purple-900/30',isHideExtra);b.classList.toggle('border-purple-200',isHideExtra);renderWords();}
+function toggleHideMemorized(){isHideMemorized=!isHideMemorized;const b=document.getElementById('hideMemBtn');b.innerHTML=isHideMemorized?`<span class="text-rose-600 dark:text-rose-400 font-extrabold">암기숨김 ON</span>`:`암기숨김`;b.classList.toggle('bg-rose-50',isHideMemorized);b.classList.toggle('border-rose-200',isHideMemorized);renderWords();}
+function toggleBlurMode(){isBlurMode=!isBlurMode;const b=document.getElementById('blurBtn');b.innerHTML=isBlurMode?`<span class="text-indigo-600 dark:text-indigo-400 font-bold">뜻가리기 ON</span>`:`뜻가리기`;b.classList.toggle('bg-indigo-50',isBlurMode);b.classList.toggle('border-indigo-200',isBlurMode);renderWords();}
+function toggleSortMode(){const b=document.getElementById('sortBtn');if(sortMode==='newest'){sortMode='oldest';b.innerHTML=`<i class="fa-solid fa-arrow-up-1-9 text-indigo-600"></i> <span class="text-indigo-600 font-extrabold">오래된순</span>`;}else if(sortMode==='oldest'){sortMode='alpha';b.innerHTML=`<i class="fa-solid fa-arrow-down-z-a text-purple-600"></i> <span class="text-purple-600 font-extrabold">A-Z순</span>`;}else{sortMode='newest';b.innerHTML=`<i class="fa-solid fa-arrow-down-9-1 text-slate-400"></i> 최신순`;}renderWords();}
 
 // ── 학습 모달 ──
 let studyList=[],studyIndex=0,studyMode='flashcard',fcFlipped=false,isShuffleOn=false,studyNextTimer=null;
@@ -495,7 +598,7 @@ function handleStudyKeys(e){if(e.key==='Escape'){closeStudyModal();return;}if(st
 function setStudyMode(mode){clearTimeout(studyNextTimer);studyMode=mode;fcFlipped=false;document.querySelectorAll('.study-tab').forEach(b=>b.className="px-2.5 py-1.5 rounded-lg study-tab text-slate-400 hover:text-white whitespace-nowrap");document.getElementById('tab_'+mode).className="px-2.5 py-1.5 rounded-lg study-tab bg-indigo-600 text-white font-extrabold whitespace-nowrap";renderStudyCanvas();}
 function studyPrev(){clearTimeout(studyNextTimer);if(studyIndex>0){studyIndex--;fcFlipped=false;renderStudyCanvas();}else alert("첫 단어입니다.");}
 function studyNext(){clearTimeout(studyNextTimer);if(studyIndex<studyList.length-1){studyIndex++;fcFlipped=false;renderStudyCanvas();}else alert("마지막 단어입니다.");}
-function renderStudyMemBtn(){let item=studyList[studyIndex];const b=document.getElementById('studyMemBtn');if(!item||!b)return;if(item.memorized){b.innerHTML=`<i class="fa-solid fa-circle-check text-emerald-400 text-lg"></i> <span>암기 완료</span>`;b.className="flex-1 py-3.5 rounded-2xl font-extrabold text-sm transition border flex items-center justify-center gap-2 shadow-lg bg-emerald-950/80 border-emerald-500 text-emerald-200";}else{b.innerHTML=`<i class="fa-solid fa-brain text-amber-400 text-lg"></i> <span>암기 완료로 체크</span>`;b.className="flex-1 py-3.5 rounded-2xl font-extrabold text-sm transition border flex items-center justify-center gap-2 shadow-lg bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200";}}
+function renderStudyMemBtn(){let item=studyList[studyIndex];const b=document.getElementById('studyMemBtn');if(!item||!b)return;if(item.memorized){b.innerHTML=`<i class="fa-solid fa-circle-check text-emerald-400 text-lg"></i> <span>암기 완료</span>`;b.className="flex-1 py-3 rounded-2xl font-extrabold text-sm transition border flex items-center justify-center gap-2 shadow-lg bg-emerald-950/80 border-emerald-500 text-emerald-200";}else{b.innerHTML=`<i class="fa-solid fa-brain text-amber-400 text-lg"></i> <span>암기 완료로 체크</span>`;b.className="flex-1 py-3 rounded-2xl font-extrabold text-sm transition border flex items-center justify-center gap-2 shadow-lg bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200";}}
 function toggleStudyMemorized(){let item=studyList[studyIndex];if(!item)return;item.memorized=!item.memorized;let t=words.find(w=>w.id===item.id);if(t)t.memorized=item.memorized;saveData();renderStudyMemBtn();}
 
 function renderStudyCanvas(){
@@ -503,42 +606,39 @@ function renderStudyCanvas(){
     document.getElementById('studyProgress').innerText=`${studyIndex+1} / ${studyList.length}`;
     renderStudyMemBtn();
     const canvas=document.getElementById('studyCanvas');
-    let fObj=folderTree.find(f=>f.id===item.folderId);
-    let isRootView=folderTree.find(f=>f.id===activeFolderId)?.parentId===null;
-    let subTag=(isRootView&&fObj&&fObj.id!==activeFolderId)?`<span class="bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded text-[10px] font-mono ml-2 border border-indigo-200">📁 ${fObj.name}</span>`:'';
     if(studyMode==='flashcard'){
-        if(!fcFlipped){canvas.innerHTML=`<div class="absolute top-4 right-4"><button onclick="event.stopPropagation();doSpeak('${item.word.replace(/'/g,"\\'")}')" class="w-10 h-10 rounded-xl bg-slate-100 hover:bg-indigo-50 text-slate-600 hover:text-indigo-600 flex items-center justify-center text-lg transition"><i class="fa-solid fa-volume-high"></i></button></div><span class="text-xs font-extrabold text-indigo-600 uppercase tracking-widest mb-3 block">Word ${subTag}</span><h3 onclick="fcFlipped=!fcFlipped;renderStudyCanvas();" class="text-4xl sm:text-6xl font-black text-slate-900 cursor-pointer select-text py-4 break-all">${item.word}</h3><div class="absolute bottom-4 text-xs text-slate-400 animate-pulse">탭하면 뜻 공개</div>`;}
-        else{let mHtml=item.meanings.map((m,i)=>{let s=item.synonyms[i]?`<span class="text-xs font-bold text-purple-600 ml-2">≒ ${item.synonyms[i]}</span>`:'';return `<div class="flex items-start gap-2 text-left font-bold text-lg sm:text-2xl text-slate-900"><span class="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-lg text-sm mt-0.5 font-mono shrink-0">${i+1}</span><div class="flex-1 select-text">${m}${s}</div></div>`;}).join('');canvas.innerHTML=`<div class="absolute top-4 right-4"><button onclick="event.stopPropagation();doSpeak('${item.word.replace(/'/g,"\\'")}')" class="w-10 h-10 rounded-xl bg-slate-100 hover:bg-indigo-50 text-slate-600 hover:text-indigo-600 flex items-center justify-center text-lg transition"><i class="fa-solid fa-volume-high"></i></button></div><span class="text-xs font-extrabold text-emerald-600 uppercase tracking-widest mb-3 block">Meanings</span><div onclick="fcFlipped=!fcFlipped;renderStudyCanvas();" class="space-y-3 w-full max-w-lg mx-auto overflow-y-auto max-h-52 cursor-pointer">${mHtml}</div>${item.examples[0]?`<div class="mt-4 pt-4 border-t border-slate-100 w-full max-w-lg text-left"><span class="text-[10px] font-extrabold text-slate-400 uppercase block mb-1">Example</span><p class="text-sm text-slate-600 italic select-text">"${item.examples[0]}"</p></div>`:''}<div class="absolute bottom-4 text-xs text-slate-400">다시 탭하면 앞면 복귀</div>`;}
+        if(!fcFlipped){canvas.innerHTML=`<div class="absolute top-4 right-4"><button onclick="event.stopPropagation();doSpeak('${item.word.replace(/'/g,"\\'")}')" class="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-700 hover:bg-indigo-50 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 flex items-center justify-center text-lg transition"><i class="fa-solid fa-volume-high"></i></button></div><span class="text-xs font-extrabold text-indigo-600 uppercase tracking-widest mb-3 block">Word</span><h3 onclick="fcFlipped=!fcFlipped;renderStudyCanvas();" class="text-4xl sm:text-6xl font-black text-slate-900 dark:text-white cursor-pointer py-4 break-all">${item.word}</h3><div class="absolute bottom-4 text-xs text-slate-400 animate-pulse">탭하면 뜻 공개</div>`;}
+        else{let mHtml=item.meanings.map((m,i)=>{let s=item.synonyms[i]?`<span class="text-xs font-bold text-purple-600 dark:text-purple-400 ml-2">≒ ${item.synonyms[i]}</span>`:'';return `<div class="flex items-start gap-2 text-left font-bold text-lg sm:text-2xl text-slate-900 dark:text-white"><span class="bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 px-2 py-0.5 rounded-lg text-sm mt-0.5 font-mono shrink-0">${i+1}</span><div class="flex-1">${m}${s}</div></div>`;}).join('');canvas.innerHTML=`<div class="absolute top-4 right-4"><button onclick="event.stopPropagation();doSpeak('${item.word.replace(/'/g,"\\'")}')" class="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-700 hover:bg-indigo-50 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 flex items-center justify-center text-lg transition"><i class="fa-solid fa-volume-high"></i></button></div><span class="text-xs font-extrabold text-emerald-600 uppercase tracking-widest mb-3 block">Meanings</span><div onclick="fcFlipped=!fcFlipped;renderStudyCanvas();" class="space-y-3 w-full max-w-lg mx-auto overflow-y-auto max-h-52 cursor-pointer">${mHtml}</div>${item.examples[0]?`<div class="mt-4 pt-4 border-t border-slate-100 dark:border-slate-700 w-full max-w-lg text-left"><span class="text-[10px] font-extrabold text-slate-400 uppercase block mb-1">Example</span><p class="text-sm text-slate-600 dark:text-slate-300 italic">"${item.examples[0]}"</p></div>`:''}<div class="absolute bottom-4 text-xs text-slate-400">다시 탭하면 앞면 복귀</div>`;}
     }else if(studyMode==='spelling'){
-        let hint=item.meanings.join(', ');canvas.innerHTML=`<span class="text-xs font-extrabold text-amber-600 uppercase tracking-widest mb-2 block">✍️ 다음 뜻의 영어 단어를 입력하세요</span><div class="text-lg sm:text-2xl font-black text-slate-900 mb-6 bg-slate-100 px-6 py-4 rounded-2xl max-w-lg w-full break-all">${hint}</div><div class="flex gap-2 max-w-sm w-full"><input type="text" id="spellInp" placeholder="철자 입력" onkeydown="if(event.key==='Enter')checkSpell()" class="flex-1 bg-white border border-slate-300 rounded-2xl px-4 py-3 text-center text-xl font-bold focus:outline-none focus:border-indigo-600 tracking-wider" autocomplete="off"><button onclick="checkSpell()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-5 py-3 rounded-2xl text-sm transition">확인</button></div><div id="spellFb" class="mt-4 min-h-[28px] text-sm font-extrabold"></div>`;setTimeout(()=>document.getElementById('spellInp')?.focus(),50);
+        let hint=item.meanings.join(', ');canvas.innerHTML=`<span class="text-xs font-extrabold text-amber-600 uppercase tracking-widest mb-2 block">✍️ 뜻을 보고 영어 단어를 입력하세요</span><div class="text-lg sm:text-2xl font-black text-slate-900 dark:text-white mb-6 bg-slate-100 dark:bg-slate-700 px-6 py-4 rounded-2xl max-w-lg w-full break-all">${hint}</div><div class="flex gap-2 max-w-sm w-full"><input type="text" id="spellInp" placeholder="철자 입력" onkeydown="if(event.key==='Enter')checkSpell()" class="flex-1 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-2xl px-4 py-3 text-center text-xl font-bold text-slate-900 dark:text-white focus:outline-none focus:border-indigo-600 tracking-wider" autocomplete="off"><button onclick="checkSpell()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-5 py-3 rounded-2xl text-sm transition">확인</button></div><div id="spellFb" class="mt-4 min-h-[28px] text-sm font-extrabold"></div>`;setTimeout(()=>document.getElementById('spellInp')?.focus(),50);
     }else if(studyMode==='choice'){
-        if(!item._choices||isShuffleOn)item._choices=generateChoices(item);let btns=item._choices.map((ch,idx)=>`<button onclick="selectChoice(${idx},this)" class="choice-btn w-full bg-slate-50 hover:bg-indigo-50/60 border border-slate-200 p-3.5 rounded-2xl text-sm font-bold text-slate-700 transition text-left flex items-center justify-between group/cb"><span><span class="text-xs bg-white group-hover/cb:bg-indigo-600 text-slate-500 group-hover/cb:text-white border border-slate-200 px-2 py-0.5 rounded-lg mr-2 font-mono transition">${idx+1}</span>${ch.text}</span><span class="res-icon hidden ml-2"></span></button>`).join('');canvas.innerHTML=`<div class="absolute top-4 right-4"><button onclick="doSpeak('${item.word.replace(/'/g,"\\'")}')" class="w-10 h-10 rounded-xl bg-slate-100 hover:bg-indigo-50 text-slate-600 hover:text-indigo-600 flex items-center justify-center text-lg transition"><i class="fa-solid fa-volume-high"></i></button></div><span class="text-xs font-bold text-indigo-600 uppercase tracking-widest mb-2 block">Word</span><h3 class="text-4xl sm:text-5xl font-black text-slate-900 select-text mb-6 break-all">${item.word}</h3><div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 w-full max-w-xl">${btns}</div>`;
+        if(!item._choices||isShuffleOn)item._choices=generateChoices(item);let btns=item._choices.map((ch,idx)=>`<button onclick="selectChoice(${idx},this)" class="choice-btn w-full bg-slate-50 dark:bg-slate-700 hover:bg-indigo-50/60 dark:hover:bg-indigo-900/30 border border-slate-200 dark:border-slate-600 p-3.5 rounded-2xl text-sm font-bold text-slate-700 dark:text-slate-300 transition text-left flex items-center justify-between group/cb"><span><span class="text-xs bg-white dark:bg-slate-600 group-hover/cb:bg-indigo-600 text-slate-500 group-hover/cb:text-white border border-slate-200 dark:border-slate-500 px-2 py-0.5 rounded-lg mr-2 font-mono transition">${idx+1}</span>${ch.text}</span><span class="res-icon hidden ml-2"></span></button>`).join('');canvas.innerHTML=`<span class="text-xs font-bold text-indigo-600 uppercase tracking-widest mb-2 block">Word</span><h3 class="text-4xl sm:text-5xl font-black text-slate-900 dark:text-white select-text mb-6 break-all">${item.word}</h3><div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 w-full max-w-xl">${btns}</div>`;
     }else if(studyMode==='blank'){
-        let ex=item.examples[0];if(!ex){canvas.innerHTML=`<div class="text-slate-500 max-w-md"><i class="fa-solid fa-circle-exclamation text-4xl text-amber-500 mb-3 block"></i><p class="text-base font-bold text-slate-800 mb-1">등록된 예문이 없습니다.</p><span class="text-xs text-slate-400 block">단어 편집에서 예문을 추가해주세요.</span></div>`;return;}
+        let ex=item.examples[0];if(!ex){canvas.innerHTML=`<i class="fa-solid fa-circle-exclamation text-4xl text-amber-500 mb-3 block"></i><p class="text-base font-bold text-slate-800 dark:text-white mb-1">등록된 예문이 없습니다.</p>`;return;}
         let reg=new RegExp(escapeRegExp(item.word),'gi');let masked=ex.replace(reg,`<span class="mx-1 text-amber-600 font-mono underline font-bold">[ ________ ]</span>`);
         if(masked===ex){let sr=new RegExp('\\b'+escapeRegExp(item.word.slice(0,4))+'\\w*','gi');masked=ex.replace(sr,`<span class="mx-1 text-amber-600 font-mono underline font-bold">[ ________ ]</span>`);}
-        canvas.innerHTML=`<span class="text-xs font-extrabold text-teal-600 uppercase tracking-widest mb-2 block">🕳️ 빈칸을 맞혀보세요</span><div class="text-base sm:text-lg font-medium text-slate-800 mb-3 max-w-lg leading-relaxed bg-slate-50 p-4 rounded-2xl border border-slate-200">"${masked}"</div><div class="text-xs font-bold text-indigo-900 mb-5 bg-indigo-50 border border-indigo-200 px-3 py-2 rounded-xl">💡 힌트: ${item.meanings.join(', ')}</div><div class="flex gap-2 max-w-sm w-full"><input type="text" id="blankInp" placeholder="정답 입력" onkeydown="if(event.key==='Enter')checkBlank()" class="flex-1 bg-white border border-slate-300 rounded-2xl px-4 py-3 text-center text-lg font-bold focus:outline-none focus:border-teal-600" autocomplete="off"><button onclick="checkBlank()" class="bg-teal-600 hover:bg-teal-700 text-white font-bold px-5 py-3 rounded-2xl text-sm transition">확인</button></div><div id="blankFb" class="mt-4 min-h-[28px] text-sm font-extrabold"></div>`;setTimeout(()=>document.getElementById('blankInp')?.focus(),50);
+        canvas.innerHTML=`<span class="text-xs font-extrabold text-teal-600 uppercase tracking-widest mb-2 block">🕳️ 빈칸을 맞혀보세요</span><div class="text-base sm:text-lg font-medium text-slate-800 dark:text-slate-200 mb-3 max-w-lg leading-relaxed bg-slate-50 dark:bg-slate-700 p-4 rounded-2xl border border-slate-200 dark:border-slate-600">"${masked}"</div><div class="text-xs font-bold text-indigo-900 dark:text-indigo-300 mb-5 bg-indigo-50 dark:bg-indigo-900/50 border border-indigo-200 dark:border-indigo-700 px-3 py-2 rounded-xl">💡 힌트: ${item.meanings.join(', ')}</div><div class="flex gap-2 max-w-sm w-full"><input type="text" id="blankInp" placeholder="정답 입력" onkeydown="if(event.key==='Enter')checkBlank()" class="flex-1 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-2xl px-4 py-3 text-center text-lg font-bold dark:text-white focus:outline-none focus:border-teal-600" autocomplete="off"><button onclick="checkBlank()" class="bg-teal-600 hover:bg-teal-700 text-white font-bold px-5 py-3 rounded-2xl text-sm transition">확인</button></div><div id="blankFb" class="mt-4 min-h-[28px] text-sm font-extrabold"></div>`;setTimeout(()=>document.getElementById('blankInp')?.focus(),50);
     }
 }
 
-function checkSpell(){clearTimeout(studyNextTimer);let u=document.getElementById('spellInp')?.value.trim().toLowerCase(),r=studyList[studyIndex].word.toLowerCase(),fb=document.getElementById('spellFb');if(!fb)return;if(u===r){fb.innerHTML=`<span class="text-emerald-600 font-black flex items-center justify-center gap-1.5"><i class="fa-solid fa-circle-check"></i> 정답! 잠시 후 이동...</span>`;doSpeak(r);studyNextTimer=setTimeout(()=>{if(!document.getElementById('studyModal').classList.contains('hidden'))studyNext();},1300);}else{fb.innerHTML=`<span class="text-rose-600">땡! 정답: <strong class="underline font-mono text-slate-900">${studyList[studyIndex].word}</strong></span>`;}}
-function checkBlank(){clearTimeout(studyNextTimer);let u=document.getElementById('blankInp')?.value.trim().toLowerCase(),r=studyList[studyIndex].word.toLowerCase(),fb=document.getElementById('blankFb');if(!fb)return;if(u===r){fb.innerHTML=`<span class="text-emerald-600 font-black flex items-center justify-center gap-1.5"><i class="fa-solid fa-circle-check"></i> 정답! 잠시 후 이동...</span>`;doSpeak(studyList[studyIndex].examples[0]);studyNextTimer=setTimeout(()=>{if(!document.getElementById('studyModal').classList.contains('hidden'))studyNext();},1600);}else{fb.innerHTML=`<span class="text-rose-600">오답. 정답: <strong class="underline font-mono text-slate-900">${studyList[studyIndex].word}</strong></span>`;}}
-function generateChoices(target){let correct=target.meanings[0]||'뜻 정의 없음';let pool=words.filter(w=>w.id!==target.id).map(w=>w.meanings[0]).filter(Boolean);const fb=['매우 아름다운','개발을 진행하다','갑작스러운 사고','전통적인 문화','위험을 감수하다'];pool=[...pool,...fb].sort(()=>Math.random()-0.5);let wrongs=[];for(let i=0;i<pool.length;i++){if(pool[i]!==correct&&!wrongs.includes(pool[i])){wrongs.push(pool[i]);if(wrongs.length===3)break;}}return[{text:correct,correct:true},{text:wrongs[0]||'A',correct:false},{text:wrongs[1]||'B',correct:false},{text:wrongs[2]||'C',correct:false}].sort(()=>Math.random()-0.5);}
-function selectChoice(idx,el){clearTimeout(studyNextTimer);let item=studyList[studyIndex],sel=item._choices[idx];document.querySelectorAll('.choice-btn').forEach(b=>b.style.pointerEvents='none');if(sel.correct){el.className="choice-btn w-full bg-emerald-600 border border-emerald-500 p-3.5 rounded-2xl text-sm font-bold text-white transition text-left flex items-center justify-between scale-[1.02]";el.querySelector('.res-icon').innerHTML='<i class="fa-solid fa-check text-white text-lg"></i>';el.querySelector('.res-icon').classList.remove('hidden');doSpeak(item.word);studyNextTimer=setTimeout(()=>{if(!document.getElementById('studyModal').classList.contains('hidden'))studyNext();},1100);}else{el.className="choice-btn w-full bg-rose-600 border border-rose-500 p-3.5 rounded-2xl text-sm font-bold text-white transition text-left flex items-center justify-between";el.querySelector('.res-icon').innerHTML='<i class="fa-solid fa-xmark text-white text-lg"></i>';el.querySelector('.res-icon').classList.remove('hidden');let ci=item._choices.findIndex(c=>c.correct),cb=document.querySelectorAll('.choice-btn')[ci];if(cb)cb.className="choice-btn w-full bg-emerald-50 border border-emerald-400 p-3.5 rounded-2xl text-sm font-bold text-emerald-900 text-left flex items-center justify-between";}}
+function checkSpell(){clearTimeout(studyNextTimer);let u=document.getElementById('spellInp')?.value.trim().toLowerCase(),r=studyList[studyIndex].word.toLowerCase(),fb=document.getElementById('spellFb');if(!fb)return;if(u===r){fb.innerHTML=`<span class="text-emerald-600 font-black flex items-center justify-center gap-1.5"><i class="fa-solid fa-circle-check"></i> 정답! 잠시 후 이동...</span>`;doSpeak(r);studyNextTimer=setTimeout(()=>{if(!document.getElementById('studyModal').classList.contains('hidden'))studyNext();},1300);}else{fb.innerHTML=`<span class="text-rose-600">땡! 정답: <strong class="underline font-mono">${studyList[studyIndex].word}</strong></span>`;}}
+function checkBlank(){clearTimeout(studyNextTimer);let u=document.getElementById('blankInp')?.value.trim().toLowerCase(),r=studyList[studyIndex].word.toLowerCase(),fb=document.getElementById('blankFb');if(!fb)return;if(u===r){fb.innerHTML=`<span class="text-emerald-600 font-black flex items-center justify-center gap-1.5"><i class="fa-solid fa-circle-check"></i> 정답! 잠시 후 이동...</span>`;doSpeak(studyList[studyIndex].examples[0]);studyNextTimer=setTimeout(()=>{if(!document.getElementById('studyModal').classList.contains('hidden'))studyNext();},1600);}else{fb.innerHTML=`<span class="text-rose-600">오답. 정답: <strong class="underline font-mono">${studyList[studyIndex].word}</strong></span>`;}}
+function generateChoices(target){let correct=target.meanings[0]||'뜻 없음';let pool=words.filter(w=>w.id!==target.id).map(w=>w.meanings[0]).filter(Boolean);const fb=['매우 아름다운','개발을 진행하다','갑작스러운 사고','전통적인 문화','위험을 감수하다'];pool=[...pool,...fb].sort(()=>Math.random()-0.5);let wrongs=[];for(let i=0;i<pool.length;i++){if(pool[i]!==correct&&!wrongs.includes(pool[i])){wrongs.push(pool[i]);if(wrongs.length===3)break;}}return[{text:correct,correct:true},{text:wrongs[0]||'A',correct:false},{text:wrongs[1]||'B',correct:false},{text:wrongs[2]||'C',correct:false}].sort(()=>Math.random()-0.5);}
+function selectChoice(idx,el){clearTimeout(studyNextTimer);let item=studyList[studyIndex],sel=item._choices[idx];document.querySelectorAll('.choice-btn').forEach(b=>b.style.pointerEvents='none');if(sel.correct){el.className="choice-btn w-full bg-emerald-600 border border-emerald-500 p-3.5 rounded-2xl text-sm font-bold text-white transition text-left flex items-center justify-between scale-[1.02]";el.querySelector('.res-icon').innerHTML='<i class="fa-solid fa-check text-white text-lg"></i>';el.querySelector('.res-icon').classList.remove('hidden');doSpeak(item.word);studyNextTimer=setTimeout(()=>{if(!document.getElementById('studyModal').classList.contains('hidden'))studyNext();},1100);}else{el.className="choice-btn w-full bg-rose-600 border border-rose-500 p-3.5 rounded-2xl text-sm font-bold text-white transition text-left flex items-center justify-between";el.querySelector('.res-icon').innerHTML='<i class="fa-solid fa-xmark text-white text-lg"></i>';el.querySelector('.res-icon').classList.remove('hidden');let ci=item._choices.findIndex(c=>c.correct),cb=document.querySelectorAll('.choice-btn')[ci];if(cb)cb.className="choice-btn w-full bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-400 p-3.5 rounded-2xl text-sm font-bold text-emerald-900 dark:text-emerald-300 text-left flex items-center justify-between";}}
 
 function escapeRegExp(s){return s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');}
 function speakInputText(){const v=document.getElementById('searchInput')?.value.trim();if(v)doSpeak(v.split('/')[0]);}
-function doSpeak(t){if(!('speechSynthesis' in window))return;window.speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(t);u.lang='en-US';u.rate=0.95;window.speechSynthesis.speak(u);}
+function doSpeak(t){if(!('speechSynthesis'in window))return;window.speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(t);u.lang='en-US';u.rate=0.95;window.speechSynthesis.speak(u);}
 
 let isPlayingAll=false;
 function playAllWords(){let list=getWordsForCurrentView();if(list.length===0){alert("읽어줄 단어가 없습니다.");return;}isPlayingAll=true;updatePlayUI(true);window.speechSynthesis.cancel();let idx=0;function readNext(){if(!isPlayingAll||idx>=list.length){stopAllWords();return;}const u=new SpeechSynthesisUtterance(list[idx].word);u.lang='en-US';u.rate=0.9;u.onend=()=>setTimeout(()=>{idx++;readNext();},600);u.onerror=()=>stopAllWords();window.speechSynthesis.speak(u);}readNext();}
 function stopAllWords(){isPlayingAll=false;window.speechSynthesis?.cancel();updatePlayUI(false);}
-function updatePlayUI(playing){const b=document.getElementById('playAllBtn');if(!b)return;if(playing){b.innerHTML=`<i class="fa-solid fa-stop"></i> 멈춤`;b.className="bg-rose-600 hover:bg-rose-700 text-white px-3 py-2 rounded-xl text-xs font-bold shadow animate-pulse whitespace-nowrap";b.setAttribute('onclick','stopAllWords()');}else{b.innerHTML=`<i class="fa-solid fa-play"></i> 연속발음`;b.className="bg-teal-600 hover:bg-teal-700 text-white px-3 py-2 rounded-xl text-xs font-bold shadow whitespace-nowrap";b.setAttribute('onclick','playAllWords()');}}
+function updatePlayUI(playing){const b=document.getElementById('playAllBtn');if(!b)return;if(playing){b.innerHTML=`<i class="fa-solid fa-stop text-xs"></i> 멈춤`;b.className="bg-rose-600 hover:bg-rose-700 text-white px-2.5 py-1.5 rounded-lg text-[11px] font-bold shadow animate-pulse whitespace-nowrap shrink-0";b.setAttribute('onclick','stopAllWords()');}else{b.innerHTML=`<i class="fa-solid fa-play text-xs"></i> 연속발음`;b.className="bg-teal-600 hover:bg-teal-700 text-white px-2.5 py-1.5 rounded-lg text-[11px] font-bold shadow whitespace-nowrap shrink-0";b.setAttribute('onclick','playAllWords()');}}
 
-function exportJsonFile(){const blob=new Blob([JSON.stringify({folderTree,words},null,2)],{type:"application/json"});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`wordbook_backup_${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(url);}
+function exportJsonFile(){const blob=new Blob([JSON.stringify({folderTree,words},null,2)],{type:"application/json"});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`wordbook_${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(url);}
 function importJsonFile(e){const file=e.target.files[0];if(!file)return;const reader=new FileReader();reader.onload=(ev)=>{try{const res=JSON.parse(ev.target.result);if(res.folderTree&&res.words){folderTree=res.folderTree;words=res.words;saveData();renderFolders();renderWords();alert("복원 성공!");}}catch(err){alert("파일 오류");}e.target.value='';};reader.readAsText(file);}
 
-if('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(()=>{});
+if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});
 </script>
 </body>
 </html>
