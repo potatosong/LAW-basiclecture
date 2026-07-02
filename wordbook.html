@@ -681,28 +681,68 @@ function toggleSortMode(){const b=document.getElementById('sortBtn');if(sortMode
 let studyList=[],studyIndex=0,studyMode='flashcard',fcFlipped=false,isShuffleOn=false,studyNextTimer=null;
 let wrongWords=[], retryRound=1;
 
+let baseStudyList=[];// 원본 단어 목록 (모드 전환 시 재확장용)
+
+function expandForMode(list, mode){
+    if(mode==='choice'){
+        // 뜻 개수만큼 문제 확장
+        const expanded=[];
+        list.forEach(w=>{
+            w.meanings.forEach((m,i)=>{
+                expanded.push({...w, _questionMeaningIdx:i});
+            });
+        });
+        return expanded;
+    } else if(mode==='blank'){
+        // 예문 개수만큼 문제 확장
+        const expanded=[];
+        list.forEach(w=>{
+            if(w.examples.length===0){expanded.push({...w,_questionExIdx:0});return;}
+            w.examples.forEach((_,i)=>{
+                expanded.push({...w, _questionExIdx:i});
+            });
+        });
+        return expanded;
+    }
+    return list;
+}
+
 function openStudyModal(){
-    studyList=getWordsForFolder();
-    if(studyList.length===0){alert("학습할 단어가 없습니다.");return;}
+    baseStudyList=getWordsForFolder();
+    if(baseStudyList.length===0){alert("학습할 단어가 없습니다.");return;}
     studyIndex=0;fcFlipped=false;wrongWords=[];retryRound=1;
-    if(isShuffleOn)shuffleStudyList();
+    if(isShuffleOn)shuffleArray(baseStudyList);
     document.getElementById('studyModal').classList.remove('hidden');
     document.getElementById('retryBadge').classList.add('hidden');
     setStudyMode('flashcard');
     window.addEventListener('keydown',handleStudyKeys);
 }
+function shuffleArray(arr){for(let i=arr.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]];}}
 function closeStudyModal(){clearTimeout(studyNextTimer);document.getElementById('studyModal').classList.add('hidden');window.removeEventListener('keydown',handleStudyKeys);renderWords();}
 function handleStudyKeys(e){if(e.key==='Escape'){closeStudyModal();return;}if(studyMode==='flashcard'&&(e.key===' '||e.key==='Spacebar')){e.preventDefault();fcFlipped=!fcFlipped;renderStudyCanvas();}else if(e.key==='ArrowLeft'&&document.activeElement?.tagName!=='INPUT')studyPrev();else if(e.key==='ArrowRight'&&document.activeElement?.tagName!=='INPUT')studyNext();}
-function setStudyMode(mode){clearTimeout(studyNextTimer);studyMode=mode;fcFlipped=false;document.querySelectorAll('.study-tab').forEach(b=>b.className="px-2.5 py-1.5 rounded-lg study-tab text-slate-400 hover:text-white whitespace-nowrap");document.getElementById('tab_'+mode).className="px-2.5 py-1.5 rounded-lg study-tab bg-indigo-600 text-white font-extrabold whitespace-nowrap";renderStudyCanvas();}
-function toggleShuffleMode(){isShuffleOn=!isShuffleOn;const btn=document.getElementById('studyShuffleBtn');clearTimeout(studyNextTimer);if(isShuffleOn){btn.innerHTML=`<i class="fa-solid fa-shuffle text-amber-400"></i> <span class="text-amber-400 font-extrabold">랜덤: ON</span>`;shuffleStudyList();}else{btn.innerHTML=`<i class="fa-solid fa-shuffle"></i> <span>랜덤: OFF</span>`;studyList=getWordsForFolder();}studyIndex=0;fcFlipped=false;renderStudyCanvas();}
-function shuffleStudyList(){for(let i=studyList.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[studyList[i],studyList[j]]=[studyList[j],studyList[i]];}}
+function setStudyMode(mode){
+    clearTimeout(studyNextTimer);studyMode=mode;fcFlipped=false;wrongWords=[];
+    studyList=expandForMode(baseStudyList,mode);
+    if(isShuffleOn)shuffleArray(studyList);
+    studyIndex=0;
+    document.querySelectorAll('.study-tab').forEach(b=>b.className="px-2.5 py-1.5 rounded-lg study-tab text-slate-400 hover:text-white whitespace-nowrap");
+    document.getElementById('tab_'+mode).className="px-2.5 py-1.5 rounded-lg study-tab bg-indigo-600 text-white font-extrabold whitespace-nowrap";
+    renderStudyCanvas();
+}
+function toggleShuffleMode(){
+    isShuffleOn=!isShuffleOn;const btn=document.getElementById('studyShuffleBtn');clearTimeout(studyNextTimer);
+    if(isShuffleOn){btn.innerHTML=`<i class="fa-solid fa-shuffle text-amber-400"></i> <span class="text-amber-400 font-extrabold">랜덤: ON</span>`;shuffleArray(baseStudyList);}
+    else{btn.innerHTML=`<i class="fa-solid fa-shuffle"></i> <span>랜덤: OFF</span>`;baseStudyList=getWordsForFolder();}
+    studyList=expandForMode(baseStudyList,studyMode);
+    studyIndex=0;fcFlipped=false;renderStudyCanvas();
+}
 function studyPrev(){clearTimeout(studyNextTimer);if(studyIndex>0){studyIndex--;fcFlipped=false;renderStudyCanvas();}else alert("첫 단어입니다.");}
 
 function studyNext(){
     clearTimeout(studyNextTimer);
     if(studyIndex<studyList.length-1){studyIndex++;fcFlipped=false;renderStudyCanvas();return;}
     // 라운드 종료
-    const unique=[...new Map(wrongWords.map(w=>[w.id,w])).values()];
+    const unique=[...new Map(wrongWords.map(w=>[w.id+'_'+(w._questionMeaningIdx??w._questionExIdx??0),w])).values()];
     if(unique.length>0){
         wrongWords=[];retryRound++;
         studyList=unique;studyIndex=0;fcFlipped=false;
@@ -754,17 +794,21 @@ ${item.examples[0]?`<div class="mt-4 pt-4 border-t border-slate-100 w-full max-w
         setTimeout(()=>document.getElementById('spellInp')?.focus(),50);
     } else if(studyMode==='choice'){
         doSpeak(item.word);
-        if(!item._choices||isShuffleOn)item._choices=generateChoices(item);
+        if(!item._choices)item._choices=generateChoices(item);
+        const mIdx=item._questionMeaningIdx??0;
+        const mLabel=item.meanings.length>1?`<span class="text-[10px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded font-mono ml-2">${mIdx+1}번 뜻</span>`:'';
         const btns=item._choices.map((ch,idx)=>`<button onclick="selectChoice(${idx},this)" class="choice-btn w-full bg-slate-50 hover:bg-indigo-50/60 border border-slate-200 p-3.5 rounded-2xl text-sm font-bold text-slate-700 transition text-left flex items-center justify-between group/cb"><span><span class="text-xs bg-white group-hover/cb:bg-indigo-600 text-slate-500 group-hover/cb:text-white border border-slate-200 px-2 py-0.5 rounded-lg mr-2 font-mono transition">${idx+1}</span>${ch.text}</span><span class="res-icon hidden ml-2"></span></button>`).join('');
-        canvas.innerHTML=`<span class="text-xs font-bold text-indigo-600 uppercase tracking-widest mb-2 block">Word</span>
+        canvas.innerHTML=`<span class="text-xs font-bold text-indigo-600 uppercase tracking-widest mb-2 block">Word ${mLabel}</span>
 <h3 class="text-4xl sm:text-5xl font-black text-slate-900 select-text mb-6 break-all">${item.word}</h3>
 <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 w-full max-w-xl">${btns}</div>`;
     } else if(studyMode==='blank'){
-        const ex=item.examples[0];
+        const exIdx=item._questionExIdx??0;
+        const ex=item.examples[exIdx];
         if(!ex){canvas.innerHTML=`<i class="fa-solid fa-circle-exclamation text-4xl text-amber-500 mb-3 block"></i><p class="text-base font-bold text-slate-800">등록된 예문이 없습니다.</p>`;return;}
+        const exLabel=item.examples.length>1?`<span class="text-[10px] bg-teal-100 text-teal-700 px-2 py-0.5 rounded font-mono ml-1">${exIdx+1}번 예문</span>`:'';
         let reg=new RegExp(escapeRegExp(item.word),'gi');let masked=ex.replace(reg,`<span class="mx-1 text-amber-600 font-mono underline font-bold">[ ________ ]</span>`);
         if(masked===ex){const sr=new RegExp('\\b'+escapeRegExp(item.word.slice(0,4))+'\\w*','gi');masked=ex.replace(sr,`<span class="mx-1 text-amber-600 font-mono underline font-bold">[ ________ ]</span>`);}
-        canvas.innerHTML=`<span class="text-xs font-extrabold text-teal-600 uppercase tracking-widest mb-2 block">🕳️ 빈칸을 맞혀보세요</span>
+        canvas.innerHTML=`<span class="text-xs font-extrabold text-teal-600 uppercase tracking-widest mb-2 block">🕳️ 빈칸을 맞혀보세요 ${exLabel}</span>
 <div class="text-base sm:text-lg font-medium text-slate-800 mb-3 max-w-lg leading-relaxed bg-slate-50 p-4 rounded-2xl border border-slate-200">"${masked}"</div>
 <div class="text-xs font-bold text-indigo-900 mb-5 bg-indigo-50 border border-indigo-200 px-3 py-2 rounded-xl">💡 힌트: ${item.meanings.join(', ')}</div>
 <div class="flex gap-2 max-w-sm w-full"><input type="text" id="blankInp" placeholder="정답 입력" onkeydown="if(event.key==='Enter')checkBlank()" class="flex-1 bg-white border border-slate-300 rounded-2xl px-4 py-3 text-center text-lg font-bold text-slate-900 focus:outline-none focus:border-teal-600" autocomplete="off"><button onclick="checkBlank()" class="bg-teal-600 hover:bg-teal-700 text-white font-bold px-5 py-3 rounded-2xl text-sm transition">확인</button></div>
@@ -790,8 +834,11 @@ function checkBlank(){
 }
 
 function generateChoices(target){
-    const correct=target.meanings[0]||'뜻 없음';
-    let pool=words.filter(w=>w.id!==target.id).map(w=>w.meanings[0]).filter(Boolean);
+    const mIdx=target._questionMeaningIdx??0;
+    const correct=target.meanings[mIdx]||target.meanings[0]||'뜻 없음';
+    // 오답 풀: 다른 단어의 뜻들 (모든 meanings 포함)
+    let pool=[];
+    words.filter(w=>w.id!==target.id).forEach(w=>w.meanings.forEach(m=>{if(m&&m!==correct)pool.push(m);}));
     const fb=['매우 아름다운','개발을 진행하다','갑작스러운 사고','전통적인 문화','위험을 감수하다'];
     pool=[...pool,...fb].sort(()=>Math.random()-0.5);
     const wrongs=[];for(let i=0;i<pool.length;i++){if(pool[i]!==correct&&!wrongs.includes(pool[i])){wrongs.push(pool[i]);if(wrongs.length===3)break;}}
@@ -808,27 +855,4 @@ function selectChoice(idx,el){
         doSpeak(item.word);
     } else {
         addWrongWord(item);
-        el.className="choice-btn w-full bg-rose-600 border border-rose-500 p-3.5 rounded-2xl text-sm font-bold text-white text-left flex items-center justify-between";
-        el.querySelector('.res-icon').innerHTML='<i class="fa-solid fa-xmark text-white text-lg"></i>';el.querySelector('.res-icon').classList.remove('hidden');
-        const ci=item._choices.findIndex(c=>c.correct),cb=document.querySelectorAll('.choice-btn')[ci];
-        if(cb)cb.className="choice-btn w-full bg-emerald-50 border border-emerald-400 p-3.5 rounded-2xl text-sm font-bold text-emerald-900 text-left flex items-center justify-between";
-    }
-    studyNextTimer=setTimeout(()=>{if(!document.getElementById('studyModal').classList.contains('hidden'))studyNext();},1400);
-}
-
-function escapeRegExp(s){return s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');}
-function speakInputText(){const v=document.getElementById('searchInput')?.value.trim();if(v)doSpeak(v.split('/')[0]);}
-function doSpeak(t){if(!('speechSynthesis'in window)||!t)return;window.speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(t);u.lang='en-US';u.rate=0.95;window.speechSynthesis.speak(u);}
-
-let isPlayingAll=false;
-function playAllWords(){const list=getWordsForFolder();if(list.length===0){alert("읽어줄 단어가 없습니다.");return;}isPlayingAll=true;updatePlayUI(true);window.speechSynthesis.cancel();let idx=0;(function readNext(){if(!isPlayingAll||idx>=list.length){stopAllWords();return;}const u=new SpeechSynthesisUtterance(list[idx].word);u.lang='en-US';u.rate=0.9;u.onend=()=>setTimeout(()=>{idx++;readNext();},600);u.onerror=()=>stopAllWords();window.speechSynthesis.speak(u);})();}
-function stopAllWords(){isPlayingAll=false;window.speechSynthesis?.cancel();updatePlayUI(false);}
-function updatePlayUI(playing){const b=document.getElementById('playAllBtn');if(!b)return;if(playing){b.innerHTML=`<i class="fa-solid fa-stop text-xs"></i> 멈춤`;b.className="bg-rose-600 hover:bg-rose-700 text-white px-2.5 py-1.5 rounded-lg text-[11px] font-bold shadow animate-pulse whitespace-nowrap shrink-0";b.setAttribute('onclick','stopAllWords()');}else{b.innerHTML=`<i class="fa-solid fa-play text-xs"></i> 연속발음`;b.className="bg-teal-600 hover:bg-teal-700 text-white px-2.5 py-1.5 rounded-lg text-[11px] font-bold shadow whitespace-nowrap shrink-0";b.setAttribute('onclick','playAllWords()');}}
-
-function exportJsonFile(){const blob=new Blob([JSON.stringify({folderTree,words},null,2)],{type:"application/json"});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`wordbook_${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(url);}
-function importJsonFile(e){const file=e.target.files[0];if(!file)return;const reader=new FileReader();reader.onload=(ev)=>{try{const res=JSON.parse(ev.target.result);if(res.folderTree&&res.words){folderTree=res.folderTree;words=res.words;saveData();renderFolders();renderWords();alert("복원 성공!");}}catch(err){alert("파일 오류");}e.target.value='';};reader.readAsText(file);}
-
-if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});
-</script>
-</body>
-</html>
+        el.className="choice-btn w-full bg-rose-600 border bo
