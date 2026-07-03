@@ -829,10 +829,27 @@ function checkSpell(){
 
 function checkBlank(){
     clearTimeout(studyNextTimer);
-    const u=document.getElementById('blankInp')?.value.trim().toLowerCase(),r=studyList[studyIndex].word.toLowerCase(),fb=document.getElementById('blankFb');if(!fb)return;
-    if(u===r){fb.innerHTML=`<span class="text-emerald-600 font-black flex items-center justify-center gap-1.5"><i class="fa-solid fa-circle-check"></i> 정답!</span>`;doSpeak(studyList[studyIndex].examples[0]);}
-    else{addWrongWord(studyList[studyIndex]);fb.innerHTML=`<span class="text-rose-600">오답 — 정답: <strong class="underline font-mono">${studyList[studyIndex].word}</strong></span>`;}
-    studyNextTimer=setTimeout(()=>{if(!document.getElementById('studyModal').classList.contains('hidden'))studyNext();},1500);
+    const item=studyList[studyIndex];
+    const u=document.getElementById('blankInp')?.value.trim().toLowerCase(),r=item.word.toLowerCase(),fb=document.getElementById('blankFb');if(!fb)return;
+    if(u===r){
+        fb.innerHTML=`<span class="text-emerald-600 font-black flex items-center justify-center gap-1.5"><i class="fa-solid fa-circle-check"></i> 정답!</span>`;
+        const exIdx=item._questionExIdx??0;
+        const exText=item.examples[exIdx]||item.examples[0]||r;
+        // TTS 끝난 후 이동
+        if('speechSynthesis' in window){
+            window.speechSynthesis.cancel();
+            const utt=new SpeechSynthesisUtterance(exText);utt.lang='en-US';utt.rate=0.9;
+            utt.onend=()=>{studyNextTimer=setTimeout(()=>{if(!document.getElementById('studyModal').classList.contains('hidden'))studyNext();},600);};
+            utt.onerror=()=>{studyNextTimer=setTimeout(()=>{if(!document.getElementById('studyModal').classList.contains('hidden'))studyNext();},600);};
+            window.speechSynthesis.speak(utt);
+        } else {
+            studyNextTimer=setTimeout(()=>{if(!document.getElementById('studyModal').classList.contains('hidden'))studyNext();},1500);
+        }
+    } else {
+        addWrongWord(item);
+        fb.innerHTML=`<span class="text-rose-600">오답 — 정답: <strong class="underline font-mono">${item.word}</strong></span>`;
+        studyNextTimer=setTimeout(()=>{if(!document.getElementById('studyModal').classList.contains('hidden'))studyNext();},1400);
+    }
 }
 
 function generateChoices(target){
