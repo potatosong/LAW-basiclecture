@@ -734,6 +734,7 @@ function toggleShuffleMode(){
     if(isShuffleOn){btn.innerHTML=`<i class="fa-solid fa-shuffle text-amber-400"></i> <span class="text-amber-400 font-extrabold">랜덤: ON</span>`;shuffleArray(baseStudyList);}
     else{btn.innerHTML=`<i class="fa-solid fa-shuffle"></i> <span>랜덤: OFF</span>`;baseStudyList=getWordsForFolder();}
     studyList=expandForMode(baseStudyList,studyMode);
+    if(isShuffleOn)shuffleArray(studyList);
     studyIndex=0;fcFlipped=false;renderStudyCanvas();
 }
 function studyPrev(){clearTimeout(studyNextTimer);if(studyIndex>0){studyIndex--;fcFlipped=false;renderStudyCanvas();}else alert("첫 단어입니다.");}
