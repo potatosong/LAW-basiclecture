@@ -936,10 +936,10 @@ function generateWorksheet(folderId){
         const exHtml=(w.examples&&w.examples.length>0)
             ?w.examples.map(ex=>`<p class="ex">${escapeHtml(ex)}</p>`).join('')
             :`<p class="ex empty">-</p>`;
-        return `<div class="item">
-            <div class="word"><span class="no">${i+1}.</span>${escapeHtml(w.word)}</div>
-            <div class="examples">${exHtml}</div>
-        </div>`;
+        return `<tr>
+            <td class="word"><span class="no">${i+1}.</span>${escapeHtml(w.word)}</td>
+            <td class="examples">${exHtml}</td>
+        </tr>`;
     }).join('');
     const html=`<!DOCTYPE html>
 <html lang="ko"><head><meta charset="UTF-8">
@@ -948,10 +948,12 @@ function generateWorksheet(folderId){
 body{font-family:'Malgun Gothic',Arial,sans-serif;color:#1e293b;padding:32px;max-width:900px;margin:0 auto;}
 h1{font-size:20px;margin-bottom:4px;}
 .sub{font-size:12px;color:#64748b;margin-bottom:20px;}
-.item{display:flex;align-items:flex-start;gap:20px;padding:14px 0;border-bottom:1px solid #e2e8f0;}
-.word{flex:0 0 180px;font-size:18px;font-weight:800;}
+table{width:100%;border-collapse:collapse;}
+th{text-align:left;font-size:12px;color:#64748b;font-weight:700;padding:8px 10px;border-bottom:2px solid #1e293b;}
+th.word,td.word{width:200px;}
+td{padding:14px 10px;border-bottom:1px solid #e2e8f0;vertical-align:top;}
+td.word{font-size:18px;font-weight:800;}
 .no{color:#6366f1;margin-right:6px;}
-.examples{flex:1;min-width:0;}
 .ex{font-size:14px;color:#334155;margin:2px 0;}
 .ex.empty{color:#cbd5e1;}
 .toolbar{margin-bottom:20px;}
@@ -962,7 +964,12 @@ button{background:#4f46e5;color:#fff;border:none;padding:8px 16px;border-radius:
 <div class="toolbar"><button onclick="window.print()">인쇄하기</button></div>
 <h1>${escapeHtml(folder.name)}</h1>
 <div class="sub">영단어 학습지 · 총 ${sorted.length}개</div>
+<table>
+<thead><tr><th class="word">단어</th><th>예문</th></tr></thead>
+<tbody>
 ${rows}
+</tbody>
+</table>
 </body></html>`;
     const win=window.open('','_blank');
     if(!win){alert("팝업이 차단되었습니다. 팝업 차단을 해제해주세요.");return;}
