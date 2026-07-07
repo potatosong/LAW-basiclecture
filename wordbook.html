@@ -952,7 +952,7 @@ function closeWorksheetModal(){document.getElementById('worksheetModal').classLi
 function blankOutWord(ex,word){
     if(!word)return ex;
     const re=new RegExp('\\b'+escapeRegExp(word)+'\\w*','gi');
-    return ex.replace(re,m=>'_'.repeat(Math.max(m.length,5)));
+    return ex.replace(re,()=>'_'.repeat(16));
 }
 function confirmGenerateWorksheet(){
     const ids=[...document.querySelectorAll('.worksheet-folder-check:checked')].map(el=>el.value);
@@ -974,16 +974,15 @@ function generateWorksheet(folderIds,mode,isRandom){
     const title=folders.map(f=>f.name).join(', ');
     let theadHtml, rows;
     if(mode==='spelling'){
-        theadHtml=`<th class="word">번호</th><th>뜻 / 예문</th><th class="answer">정답(철자)</th>`;
+        theadHtml=`<th class="meaning-col">뜻</th><th>예문 (빈칸에 철자 쓰기)</th>`;
         rows=sorted.map((w,i)=>{
-            const meaningHtml=(w.meanings&&w.meanings.length>0)?`<p class="meaning">${escapeHtml(w.meanings.join(' / '))}</p>`:'';
+            const meaning=(w.meanings&&w.meanings.length>0)?w.meanings.join(' / '):'';
             const exHtml=(w.examples&&w.examples.length>0)
                 ?w.examples.map(ex=>`<p class="ex">${escapeHtml(blankOutWord(ex,w.word))}</p>`).join('')
-                :'';
+                :`<p class="ex empty">-</p>`;
             return `<tr>
-                <td class="word">${i+1}.</td>
-                <td class="examples">${meaningHtml}${exHtml}</td>
-                <td class="answer"></td>
+                <td class="meaning-col"><span class="no">${i+1}.</span>${escapeHtml(meaning)}</td>
+                <td class="examples">${exHtml}</td>
             </tr>`;
         }).join('');
     } else {
@@ -1008,13 +1007,12 @@ h1{font-size:20px;margin-bottom:4px;}
 table{width:100%;border-collapse:collapse;}
 th{text-align:left;font-size:12px;color:#64748b;font-weight:700;padding:8px 10px;border-bottom:2px solid #1e293b;}
 th.word,td.word{width:200px;}
-th.answer,td.answer{width:160px;}
+th.meaning-col,td.meaning-col{width:240px;}
 td{padding:14px 10px;border-bottom:1px solid #e2e8f0;vertical-align:top;}
 td.word{font-size:18px;font-weight:800;}
-td.answer{border-left:1px dashed #cbd5e1;}
+td.meaning-col{font-size:14px;font-weight:700;color:#1e293b;}
 .no{color:#6366f1;margin-right:6px;}
-.meaning{font-size:14px;font-weight:700;color:#1e293b;margin:2px 0 4px;}
-.ex{font-size:14px;color:#334155;margin:2px 0;}
+.ex{font-size:14px;color:#334155;margin:4px 0;letter-spacing:0.5px;}
 .ex.empty{color:#cbd5e1;}
 .toolbar{margin-bottom:20px;}
 button{background:#4f46e5;color:#fff;border:none;padding:8px 16px;border-radius:8px;font-weight:700;cursor:pointer;font-size:13px;}
