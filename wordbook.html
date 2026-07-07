@@ -953,9 +953,50 @@ function openWorksheetModal(){
     document.getElementById('worksheetModal').classList.remove('hidden');
 }
 function closeWorksheetModal(){document.getElementById('worksheetModal').classList.add('hidden');}
+const IRREGULAR_WORD_FORMS={
+    be:['is','am','are','was','were','been','being'],go:['went','gone','going'],do:['did','done','doing','does'],
+    have:['has','had','having'],get:['got','gotten','getting'],make:['made','making'],take:['took','taken','taking'],
+    come:['came','coming'],see:['saw','seen','seeing'],know:['knew','known','knowing'],give:['gave','given','giving'],
+    find:['found','finding'],think:['thought','thinking'],tell:['told','telling'],become:['became','becoming'],
+    show:['showed','shown','showing'],leave:['left','leaving'],feel:['felt','feeling'],bring:['brought','bringing'],
+    begin:['began','begun','beginning'],keep:['kept','keeping'],hold:['held','holding'],write:['wrote','written','writing'],
+    stand:['stood','standing'],hear:['heard','hearing'],let:['letting'],mean:['meant','meaning'],set:['setting'],
+    meet:['met','meeting'],run:['ran','running'],pay:['paid','paying'],sit:['sat','sitting'],
+    speak:['spoke','spoken','speaking'],lie:['lay','lain','lying'],lead:['led','leading'],
+    grow:['grew','grown','growing'],lose:['lost','losing'],fall:['fell','fallen','falling'],send:['sent','sending'],
+    build:['built','building'],understand:['understood','understanding'],draw:['drew','drawn','drawing'],
+    break:['broke','broken','breaking'],spend:['spent','spending'],cut:['cutting'],rise:['rose','risen','rising'],
+    drive:['drove','driven','driving'],buy:['bought','buying'],wear:['wore','worn','wearing'],
+    choose:['chose','chosen','choosing'],catch:['caught','catching'],fight:['fought','fighting'],
+    teach:['taught','teaching'],eat:['ate','eaten','eating'],fly:['flew','flown','flying'],
+    forget:['forgot','forgotten','forgetting'],sell:['sold','selling'],win:['won','winning'],
+    throw:['threw','thrown','throwing'],shoot:['shot','shooting'],swim:['swam','swum','swimming'],
+    sing:['sang','sung','singing'],drink:['drank','drunk','drinking'],ring:['rang','rung','ringing'],
+    swing:['swung','swinging'],hang:['hung','hanging'],dig:['dug','digging'],stick:['stuck','sticking'],
+    strike:['struck','striking'],wake:['woke','woken','waking'],steal:['stole','stolen','stealing'],
+    bear:['bore','born','borne','bearing'],tear:['tore','torn','tearing'],swear:['swore','sworn','swearing'],
+    ride:['rode','ridden','riding'],hide:['hid','hidden','hiding'],bite:['bit','bitten','biting'],
+    slide:['slid','sliding'],shine:['shone','shining'],light:['lit','lighting'],sleep:['slept','sleeping'],
+    feed:['fed','feeding'],deal:['dealt','dealing'],kneel:['knelt','kneeling'],lend:['lent','lending'],
+    bend:['bent','bending'],spell:['spelt','spelling'],smell:['smelt','smelling'],learn:['learnt','learning'],
+    dream:['dreamt','dreaming'],burn:['burnt','burning'],freeze:['froze','frozen','freezing'],
+    weep:['wept','weeping'],sweep:['swept','sweeping'],seek:['sought','seeking'],shake:['shook','shaken','shaking'],
+    shrink:['shrank','shrunk','shrinking'],sink:['sank','sunk','sinking'],spin:['spun','spinning'],
+    withdraw:['withdrew','withdrawn','withdrawing'],arise:['arose','arisen','arising'],
+    awake:['awoke','awoken','awaking'],forgive:['forgave','forgiven','forgiving'],say:['said','saying'],
+    child:['children'],man:['men'],woman:['women'],foot:['feet'],tooth:['teeth'],mouse:['mice'],
+    person:['people'],goose:['geese'],good:['better','best'],bad:['worse','worst'],
+    far:['further','farther','furthest','farthest'],little:['less','least'],many:['more','most'],much:['more','most']
+};
 function blankOutWord(ex,word){
     if(!word)return ex;
-    const re=new RegExp('\\b'+escapeRegExp(word)+'\\w*','gi');
+    const lw=word.toLowerCase();
+    const variants=new Set([word]);
+    if(/e$/i.test(word))variants.add(word.slice(0,-1));
+    if(/[^aeiou]y$/i.test(word))variants.add(word.slice(0,-1)+'i');
+    const irregular=IRREGULAR_WORD_FORMS[lw];
+    if(irregular)irregular.forEach(f=>variants.add(f));
+    const re=new RegExp('\\b('+[...variants].map(escapeRegExp).join('|')+')\\w*','gi');
     return ex.replace(re,()=>'_'.repeat(16));
 }
 function confirmGenerateWorksheet(){
