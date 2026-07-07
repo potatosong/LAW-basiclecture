@@ -91,6 +91,9 @@
         </div>
 
         <div class="p-3 border-t border-slate-800 space-y-2 shrink-0">
+            <button onclick="openWorksheetModal()" class="w-full bg-rose-600 hover:bg-rose-500 text-white px-3 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5">
+                <i class="fa-solid fa-print"></i> 학습지 생성
+            </button>
             <button onclick="addRootFolder()" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5">
                 <i class="fa-solid fa-plus"></i> 새 메인 폴더
             </button>
@@ -140,9 +143,6 @@
                 <h2 id="currentFolderName" class="font-extrabold text-slate-700 text-sm shrink-0 mr-1 hidden sm:block max-w-[160px] truncate"></h2>
                 <button onclick="openStudyModal()" class="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-2.5 py-1.5 rounded-lg text-[11px] font-extrabold shadow transition flex items-center gap-1 whitespace-nowrap">
                     <i class="fa-solid fa-gamepad text-amber-300 text-xs"></i> 학습 센터
-                </button>
-                <button onclick="openWorksheetModal()" class="bg-slate-100 text-slate-600 border border-slate-200 px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition whitespace-nowrap flex items-center gap-1">
-                    <i class="fa-solid fa-print text-rose-500 text-xs"></i> 학습지 생성
                 </button>
                 <button onclick="toggleHideExtra()" id="hideExtraBtn" class="bg-slate-100 text-slate-600 border border-slate-200 px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition whitespace-nowrap flex items-center gap-1">
                     <i class="fa-solid fa-file-circle-plus text-purple-500 text-xs"></i> 부가정보
