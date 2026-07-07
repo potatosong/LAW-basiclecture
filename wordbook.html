@@ -69,6 +69,9 @@
         <label class="flex items-center gap-2 text-sm text-slate-700 mt-3 cursor-pointer">
             <input type="checkbox" id="worksheetRandomCheck"> 랜덤 순서로 출제
         </label>
+        <label class="flex items-center gap-2 text-sm text-slate-700 mt-1.5 cursor-pointer">
+            <input type="checkbox" id="worksheetAnswerCheck"> 정답 페이지 함께 출력
+        </label>
 
         <div class="flex gap-2 mt-5">
             <button onclick="closeWorksheetModal()" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-2.5 rounded-xl text-sm font-bold transition">취소</button>
@@ -946,22 +949,24 @@ function openWorksheetModal(){
         </label>`;
     }).join('');
     document.getElementById('worksheetRandomCheck').checked=false;
+    document.getElementById('worksheetAnswerCheck').checked=false;
     document.getElementById('worksheetModal').classList.remove('hidden');
 }
 function closeWorksheetModal(){document.getElementById('worksheetModal').classList.add('hidden');}
 function blankOutWord(ex,word){
     if(!word)return ex;
     const re=new RegExp('\\b'+escapeRegExp(word)+'\\w*','gi');
-    return ex.replace(re,m=>'_'.repeat(Math.max(m.length,5)));
+    return ex.replace(re,()=>'_'.repeat(16));
 }
 function confirmGenerateWorksheet(){
     const ids=[...document.querySelectorAll('.worksheet-folder-check:checked')].map(el=>el.value);
     if(ids.length===0){alert("폴더를 하나 이상 선택하세요.");return;}
     const mode=document.querySelector('input[name="worksheetMode"]:checked').value;
     const isRandom=document.getElementById('worksheetRandomCheck').checked;
-    generateWorksheet(ids,mode,isRandom);
+    const includeAnswers=document.getElementById('worksheetAnswerCheck').checked;
+    generateWorksheet(ids,mode,isRandom,includeAnswers);
 }
-function generateWorksheet(folderIds,mode,isRandom){
+function generateWorksheet(folderIds,mode,isRandom,includeAnswers){
     const folders=folderIds.map(id=>folderTree.find(f=>f.id===id)).filter(Boolean);
     if(folders.length===0)return;
     const seen=new Set(); let list=[];
@@ -974,16 +979,15 @@ function generateWorksheet(folderIds,mode,isRandom){
     const title=folders.map(f=>f.name).join(', ');
     let theadHtml, rows;
     if(mode==='spelling'){
-        theadHtml=`<th class="word">번호</th><th>뜻 / 예문</th><th class="answer">정답(철자)</th>`;
+        theadHtml=`<th class="meaning-col">뜻</th><th>예문 (빈칸에 철자 쓰기)</th>`;
         rows=sorted.map((w,i)=>{
-            const meaningHtml=(w.meanings&&w.meanings.length>0)?`<p class="meaning">${escapeHtml(w.meanings.join(' / '))}</p>`:'';
+            const meaning=(w.meanings&&w.meanings.length>0)?w.meanings.join(' / '):'';
             const exHtml=(w.examples&&w.examples.length>0)
                 ?w.examples.map(ex=>`<p class="ex">${escapeHtml(blankOutWord(ex,w.word))}</p>`).join('')
-                :'';
+                :`<p class="ex empty">-</p>`;
             return `<tr>
-                <td class="word">${i+1}.</td>
-                <td class="examples">${meaningHtml}${exHtml}</td>
-                <td class="answer"></td>
+                <td class="meaning-col"><span class="no">${i+1}.</span>${escapeHtml(meaning)}</td>
+                <td class="examples">${exHtml}</td>
             </tr>`;
         }).join('');
     } else {
@@ -998,6 +1002,17 @@ function generateWorksheet(folderIds,mode,isRandom){
             </tr>`;
         }).join('');
     }
+    const answerHtml=includeAnswers?`
+<div class="answer-page">
+<h1>정답 - ${escapeHtml(title)}</h1>
+<div class="sub">정답지 · 총 ${sorted.length}개</div>
+<table>
+<thead><tr><th class="word">단어</th><th>뜻</th></tr></thead>
+<tbody>
+${sorted.map((w,i)=>`<tr><td class="word"><span class="no">${i+1}.</span>${escapeHtml(w.word)}</td><td class="examples">${escapeHtml((w.meanings||[]).join(' / '))}</td></tr>`).join('')}
+</tbody>
+</table>
+</div>`:'';
     const html=`<!DOCTYPE html>
 <html lang="ko"><head><meta charset="UTF-8">
 <title>학습지 - ${escapeHtml(title)}</title>
@@ -1008,17 +1023,17 @@ h1{font-size:20px;margin-bottom:4px;}
 table{width:100%;border-collapse:collapse;}
 th{text-align:left;font-size:12px;color:#64748b;font-weight:700;padding:8px 10px;border-bottom:2px solid #1e293b;}
 th.word,td.word{width:200px;}
-th.answer,td.answer{width:160px;}
+th.meaning-col,td.meaning-col{width:240px;}
 td{padding:14px 10px;border-bottom:1px solid #e2e8f0;vertical-align:top;}
 td.word{font-size:18px;font-weight:800;}
-td.answer{border-left:1px dashed #cbd5e1;}
+td.meaning-col{font-size:14px;font-weight:700;color:#1e293b;}
 .no{color:#6366f1;margin-right:6px;}
-.meaning{font-size:14px;font-weight:700;color:#1e293b;margin:2px 0 4px;}
-.ex{font-size:14px;color:#334155;margin:2px 0;}
+.ex{font-size:14px;color:#334155;margin:4px 0;letter-spacing:0.5px;}
 .ex.empty{color:#cbd5e1;}
 .toolbar{margin-bottom:20px;}
 button{background:#4f46e5;color:#fff;border:none;padding:8px 16px;border-radius:8px;font-weight:700;cursor:pointer;font-size:13px;}
-@media print{ .toolbar{display:none;} body{padding:0;} }
+.answer-page{margin-top:40px;padding-top:24px;border-top:3px dashed #cbd5e1;}
+@media print{ .toolbar{display:none;} body{padding:0;} .answer-page{page-break-before:always;border-top:none;margin-top:0;padding-top:0;} }
 </style></head>
 <body>
 <div class="toolbar"><button onclick="window.print()">인쇄하기</button></div>
@@ -1030,6 +1045,7 @@ button{background:#4f46e5;color:#fff;border:none;padding:8px 16px;border-radius:
 ${rows}
 </tbody>
 </table>
+${answerHtml}
 </body></html>`;
     const win=window.open('','_blank');
     if(!win){alert("팝업이 차단되었습니다. 팝업 차단을 해제해주세요.");return;}
