@@ -4,101 +4,205 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>뽀모도로 타이머</title>
-<meta name="theme-color" content="#4f46e5">
+<meta name="theme-color" content="#6366f1">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="뽀모도로">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='90'>🍅</text></svg>">
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
+  :root[data-theme="dark"] {
+    --bg-1: #0f172a; --bg-2: #1e1b4b;
+    --card: #1e293b; --card-2: #16213a;
+    --text: #f1f5f9; --sub: #94a3b8;
+    --track: rgba(255,255,255,0.10);
+    --chip: rgba(255,255,255,0.08); --chip-active: rgba(255,255,255,0.18);
+    --border: rgba(255,255,255,0.08);
+  }
+  :root[data-theme="light"] {
+    --bg-1: #eef2ff; --bg-2: #f8fafc;
+    --card: #ffffff; --card-2: #f8fafc;
+    --text: #0f172a; --sub: #64748b;
+    --track: rgba(15,23,42,0.08);
+    --chip: rgba(15,23,42,0.05); --chip-active: rgba(15,23,42,0.10);
+    --border: rgba(15,23,42,0.08);
+  }
   html, body { height: 100%; }
   body {
-    font-family: 'Segoe UI', 'Malgun Gothic', sans-serif;
-    transition: background 0.6s ease;
+    font-family: 'Pretendard', 'Segoe UI', 'Malgun Gothic', sans-serif;
+    background: radial-gradient(circle at 20% 0%, var(--bg-2), var(--bg-1) 60%);
+    color: var(--text);
+    transition: background 0.5s ease, color 0.3s ease;
   }
-  .ring-track { stroke: rgba(255,255,255,0.15); }
-  .ring-progress { stroke-linecap: round; transition: stroke-dashoffset 1s linear, stroke 0.6s ease; }
-  .mode-btn { transition: all 0.2s ease; }
-  .mode-btn.active { background: rgba(255,255,255,0.25); }
-  .ctrl-btn { transition: transform 0.15s ease, background 0.2s ease; }
+  .card { background: var(--card); border: 1px solid var(--border); }
+  .sub { color: var(--sub); }
+  .chip { background: var(--chip); transition: background 0.2s ease, color 0.2s ease; }
+  .chip.active { background: var(--chip-active); color: var(--text); }
+  .icon-btn { background: var(--chip); transition: transform 0.15s ease, background 0.2s ease; }
+  .icon-btn:hover { background: var(--chip-active); }
+  .icon-btn:active { transform: scale(0.92); }
+
+  .timer-wrap { position: relative; width: min(82vw, 380px); aspect-ratio: 1/1; margin: 0 auto; }
+  .donut { width: 100%; height: 100%; border-radius: 50%; box-shadow: 0 0 0 1px var(--border) inset; }
+  .donut-hole {
+    position: absolute; inset: 9%; border-radius: 50%; background: var(--card);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.15);
+  }
+  #timeDisplay { font-size: clamp(2.75rem, 11vw, 4.25rem); font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+  #taskDisplay { max-width: 80%; text-align: center; }
+  #taskDisplay:empty::before { content: '지금 집중할 일을 입력해보세요'; opacity: 0.4; }
+
+  .ctrl-btn { transition: transform 0.15s ease, filter 0.2s ease; }
   .ctrl-btn:active { transform: scale(0.94); }
-  @keyframes pulse-soft { 0%,100%{opacity:1} 50%{opacity:.6} }
+  @keyframes pulse-soft { 0%,100%{opacity:1} 50%{opacity:.55} }
   .running-pulse { animation: pulse-soft 2s ease-in-out infinite; }
+
   input[type=number]::-webkit-inner-spin-button { opacity: 1; }
-  .fade-in { animation: fadeIn 0.3s ease-out; }
+  .fade-in { animation: fadeIn 0.25s ease-out; }
   @keyframes fadeIn { from{opacity:0; transform:translateY(4px)} to{opacity:1; transform:translateY(0)} }
+
+  .swatch { width: 30px; height: 30px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; transition: transform 0.15s ease, border-color 0.15s ease; }
+  .swatch:hover { transform: scale(1.1); }
+  .swatch.selected { border-color: var(--text); transform: scale(1.08); }
+
+  select, input[type=number], input[type=text] {
+    background: var(--chip); color: var(--text); border: 1px solid var(--border);
+  }
+  select:focus, input:focus { outline: none; }
+
+  #focusOverlay { position: fixed; inset: 0; background: var(--bg-1); z-index: 200; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 24px; }
+  #focusOverlay.hidden { display: none; }
 </style>
 </head>
-<body class="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-900 via-slate-900 to-slate-900 text-white" id="body">
+<body class="min-h-screen flex items-center justify-center px-4 py-10">
 
-<div class="w-full max-w-md px-6 py-8">
+<div class="w-full max-w-md">
 
-  <h1 class="text-center text-lg font-semibold tracking-widest text-white/70 mb-6">🍅 POMODORO</h1>
-
-  <!-- mode switcher -->
-  <div id="modeSwitch" class="flex gap-2 bg-white/10 rounded-full p-1 mb-8 text-sm font-medium">
-    <button data-mode="work" class="mode-btn active flex-1 py-2 rounded-full">집중</button>
-    <button data-mode="short" class="mode-btn flex-1 py-2 rounded-full">짧은 휴식</button>
-    <button data-mode="long" class="mode-btn flex-1 py-2 rounded-full">긴 휴식</button>
-  </div>
-
-  <!-- timer ring -->
-  <div class="relative flex items-center justify-center mb-8">
-    <svg width="280" height="280" viewBox="0 0 280 280" class="-rotate-90">
-      <circle cx="140" cy="140" r="126" fill="none" stroke-width="10" class="ring-track"></circle>
-      <circle id="ringProgress" cx="140" cy="140" r="126" fill="none" stroke-width="10"
-        stroke="#818cf8" class="ring-progress"
-        stroke-dasharray="791.68" stroke-dashoffset="0"></circle>
-    </svg>
-    <div class="absolute flex flex-col items-center">
-      <span id="timeDisplay" class="text-6xl font-bold tabular-nums">25:00</span>
-      <span id="cycleDisplay" class="mt-2 text-sm text-white/50">완료한 뽀모도로: 0</span>
+  <div class="flex items-center justify-between mb-5">
+    <h1 class="text-base font-semibold tracking-widest sub">🍅 POMODORO</h1>
+    <div class="flex items-center gap-2">
+      <button id="focusBtn" class="icon-btn w-9 h-9 rounded-full flex items-center justify-center text-sm" title="집중 모드">⛶</button>
+      <button id="themeBtn" class="icon-btn w-9 h-9 rounded-full flex items-center justify-center text-sm" title="테마 전환">🌙</button>
     </div>
   </div>
 
-  <!-- controls -->
-  <div class="flex items-center justify-center gap-4 mb-8">
-    <button id="resetBtn" class="ctrl-btn w-14 h-14 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-xl" title="초기화">↺</button>
-    <button id="startBtn" class="ctrl-btn w-20 h-20 rounded-full bg-indigo-500 hover:bg-indigo-400 flex items-center justify-center text-2xl font-bold shadow-lg shadow-indigo-500/30">▶</button>
-    <button id="skipBtn" class="ctrl-btn w-14 h-14 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-xl" title="다음 단계로">⏭</button>
+  <div class="card rounded-3xl p-6 shadow-xl">
+
+    <!-- mode switcher -->
+    <div id="modeSwitch" class="flex gap-2 rounded-full p-1 mb-8 text-sm font-medium chip">
+      <button data-mode="work" class="chip active flex-1 py-2 rounded-full">집중</button>
+      <button data-mode="short" class="chip flex-1 py-2 rounded-full">짧은 휴식</button>
+      <button data-mode="long" class="chip flex-1 py-2 rounded-full">긴 휴식</button>
+    </div>
+
+    <!-- task label -->
+    <input id="taskInput" type="text" maxlength="60" placeholder="지금 집중할 일은?"
+      class="w-full text-center text-sm rounded-xl py-2 px-3 mb-6 outline-none focus:ring-2" style="--tw-ring-color: var(--track)">
+
+    <!-- timer -->
+    <div class="timer-wrap mb-8">
+      <div id="donut" class="donut"></div>
+      <div class="donut-hole">
+        <span id="timeDisplay">25:00</span>
+        <span id="taskDisplay" class="text-xs sub mt-1"></span>
+        <span id="cycleDisplay" class="mt-3 text-xs sub">완료한 뽀모도로: 0</span>
+      </div>
+    </div>
+
+    <!-- controls -->
+    <div class="flex items-center justify-center gap-4 mb-2">
+      <button id="resetBtn" class="ctrl-btn icon-btn w-14 h-14 rounded-full flex items-center justify-center text-xl" title="초기화">↺</button>
+      <button id="startBtn" class="ctrl-btn w-20 h-20 rounded-full flex items-center justify-center text-2xl font-bold text-white shadow-lg" title="시작/일시정지">▶</button>
+      <button id="skipBtn" class="ctrl-btn icon-btn w-14 h-14 rounded-full flex items-center justify-center text-xl" title="다음 단계로">⏭</button>
+    </div>
+
   </div>
 
   <!-- settings -->
-  <details class="text-sm text-white/70">
-    <summary class="cursor-pointer text-center select-none hover:text-white">⚙ 시간 설정</summary>
-    <div class="grid grid-cols-3 gap-3 mt-4 fade-in">
-      <label class="flex flex-col items-center gap-1">
-        <span>집중(분)</span>
-        <input id="workInput" type="number" min="1" max="180" value="25" class="w-16 text-center rounded-lg bg-white/10 py-1 text-white outline-none focus:ring-2 focus:ring-indigo-400">
-      </label>
-      <label class="flex flex-col items-center gap-1">
-        <span>짧은 휴식</span>
-        <input id="shortInput" type="number" min="1" max="60" value="5" class="w-16 text-center rounded-lg bg-white/10 py-1 text-white outline-none focus:ring-2 focus:ring-indigo-400">
-      </label>
-      <label class="flex flex-col items-center gap-1">
-        <span>긴 휴식</span>
-        <input id="longInput" type="number" min="1" max="90" value="15" class="w-16 text-center rounded-lg bg-white/10 py-1 text-white outline-none focus:ring-2 focus:ring-indigo-400">
-      </label>
-    </div>
-    <div class="mt-4 flex items-center justify-center gap-2">
-      <label class="flex items-center gap-2 cursor-pointer">
-        <input id="autoStartInput" type="checkbox" class="accent-indigo-400 w-4 h-4">
-        <span>다음 단계 자동 시작</span>
-      </label>
+  <details class="text-sm sub mt-5">
+    <summary class="cursor-pointer text-center select-none">⚙ 설정</summary>
+    <div class="card rounded-2xl p-5 mt-3 fade-in space-y-5">
+
+      <div>
+        <div class="mb-2 text-xs font-semibold">시간 (분)</div>
+        <div class="grid grid-cols-3 gap-3">
+          <label class="flex flex-col items-center gap-1">
+            <span class="text-xs">집중</span>
+            <input id="workInput" type="number" min="1" max="180" value="25" class="w-16 text-center rounded-lg py-1">
+          </label>
+          <label class="flex flex-col items-center gap-1">
+            <span class="text-xs">짧은 휴식</span>
+            <input id="shortInput" type="number" min="1" max="60" value="5" class="w-16 text-center rounded-lg py-1">
+          </label>
+          <label class="flex flex-col items-center gap-1">
+            <span class="text-xs">긴 휴식</span>
+            <input id="longInput" type="number" min="1" max="90" value="15" class="w-16 text-center rounded-lg py-1">
+          </label>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between">
+        <span class="text-xs font-semibold">긴 휴식 주기</span>
+        <div class="flex items-center gap-2">
+          <input id="intervalInput" type="number" min="2" max="10" value="4" class="w-14 text-center rounded-lg py-1">
+          <span class="text-xs">번째 집중마다</span>
+        </div>
+      </div>
+
+      <div>
+        <div class="mb-2 text-xs font-semibold">타이머 색상</div>
+        <div id="colorSwatches" class="flex gap-3"></div>
+      </div>
+
+      <div>
+        <div class="mb-2 text-xs font-semibold">알림음</div>
+        <div class="flex items-center gap-3">
+          <select id="soundSelect" class="rounded-lg py-1.5 px-2 text-xs flex-1">
+            <option value="classic">클래식 (트리플 톤)</option>
+            <option value="chime">차임벨</option>
+            <option value="digital">디지털 비프</option>
+          </select>
+          <button id="previewSoundBtn" class="icon-btn rounded-lg px-3 py-1.5 text-xs">▶ 미리듣기</button>
+        </div>
+        <div class="flex items-center gap-2 mt-3">
+          <span class="text-xs w-10">볼륨</span>
+          <input id="volumeInput" type="range" min="0" max="100" value="70" class="flex-1 accent-indigo-400">
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between">
+        <span class="text-xs">다음 단계 자동 시작</span>
+        <input id="autoStartInput" type="checkbox" class="w-4 h-4">
+      </div>
+      <div class="flex items-center justify-between">
+        <span class="text-xs">종료 5초 전 카운트다운 비프</span>
+        <input id="countdownBeepInput" type="checkbox" class="w-4 h-4" checked>
+      </div>
+
     </div>
   </details>
 
 </div>
 
+<!-- focus mode overlay -->
+<div id="focusOverlay" class="hidden">
+  <span id="focusTime" class="font-extrabold tabular-nums" style="font-size: clamp(4rem, 22vw, 9rem);">25:00</span>
+  <span id="focusTask" class="sub text-lg"></span>
+  <button id="focusExitBtn" class="icon-btn rounded-full px-5 py-2 text-sm mt-4">✕ 나가기</button>
+</div>
+
 <script>
+const ACCENT_COLORS = ['#6366f1', '#f43f5e', '#10b981', '#f59e0b', '#0ea5e9', '#8b5cf6'];
+const SOUND_LABEL = { classic: '클래식 (트리플 톤)', chime: '차임벨', digital: '디지털 비프' };
 const DURATIONS = { work: 25, short: 5, long: 15 };
 const MODE_LABEL = { work: '집중', short: '짧은 휴식', long: '긴 휴식' };
-const MODE_COLOR = { work: '#818cf8', short: '#34d399', long: '#38bdf8' };
-const MODE_BG = {
-  work: 'from-indigo-900 via-slate-900 to-slate-900',
-  short: 'from-emerald-900 via-slate-900 to-slate-900',
-  long: 'from-sky-900 via-slate-900 to-slate-900'
-};
+
+let longBreakInterval = 4;
+let accentColor = ACCENT_COLORS[0];
+let soundType = 'classic';
+let volume = 0.7;
+let theme = 'dark';
 
 let mode = 'work';
 let totalSeconds = DURATIONS.work * 60;
@@ -107,21 +211,55 @@ let running = false;
 let timerId = null;
 let completedPomodoros = 0;
 
+const root = document.documentElement;
 const timeDisplay = document.getElementById('timeDisplay');
+const taskDisplay = document.getElementById('taskDisplay');
 const cycleDisplay = document.getElementById('cycleDisplay');
 const startBtn = document.getElementById('startBtn');
 const resetBtn = document.getElementById('resetBtn');
 const skipBtn = document.getElementById('skipBtn');
-const ring = document.getElementById('ringProgress');
-const body = document.getElementById('body');
+const donut = document.getElementById('donut');
 const modeSwitch = document.getElementById('modeSwitch');
 const workInput = document.getElementById('workInput');
 const shortInput = document.getElementById('shortInput');
 const longInput = document.getElementById('longInput');
+const intervalInput = document.getElementById('intervalInput');
 const autoStartInput = document.getElementById('autoStartInput');
+const countdownBeepInput = document.getElementById('countdownBeepInput');
+const soundSelect = document.getElementById('soundSelect');
+const previewSoundBtn = document.getElementById('previewSoundBtn');
+const volumeInput = document.getElementById('volumeInput');
+const colorSwatches = document.getElementById('colorSwatches');
+const taskInput = document.getElementById('taskInput');
+const themeBtn = document.getElementById('themeBtn');
+const focusBtn = document.getElementById('focusBtn');
+const focusOverlay = document.getElementById('focusOverlay');
+const focusTime = document.getElementById('focusTime');
+const focusTask = document.getElementById('focusTask');
+const focusExitBtn = document.getElementById('focusExitBtn');
 
-const CIRCUMFERENCE = 2 * Math.PI * 126;
-ring.setAttribute('stroke-dasharray', CIRCUMFERENCE);
+function buildSwatches() {
+  colorSwatches.innerHTML = '';
+  ACCENT_COLORS.forEach(color => {
+    const btn = document.createElement('button');
+    btn.className = 'swatch';
+    btn.style.background = color;
+    btn.dataset.color = color;
+    btn.addEventListener('click', () => {
+      accentColor = color;
+      applyAccent();
+      saveSettings();
+    });
+    colorSwatches.appendChild(btn);
+  });
+  applyAccent();
+}
+
+function applyAccent() {
+  document.querySelectorAll('.swatch').forEach(s => s.classList.toggle('selected', s.dataset.color === accentColor));
+  startBtn.style.background = accentColor;
+  startBtn.style.boxShadow = `0 8px 24px ${accentColor}55`;
+}
 
 function loadSettings() {
   try {
@@ -129,13 +267,25 @@ function loadSettings() {
     if (saved.work) DURATIONS.work = saved.work;
     if (saved.short) DURATIONS.short = saved.short;
     if (saved.long) DURATIONS.long = saved.long;
+    if (saved.interval) longBreakInterval = saved.interval;
+    if (saved.accent) accentColor = saved.accent;
+    if (saved.sound) soundType = saved.sound;
+    if (typeof saved.volume === 'number') volume = saved.volume;
     if (typeof saved.autoStart === 'boolean') autoStartInput.checked = saved.autoStart;
+    if (typeof saved.countdownBeep === 'boolean') countdownBeepInput.checked = saved.countdownBeep;
     if (typeof saved.completed === 'number') completedPomodoros = saved.completed;
+    if (saved.theme) theme = saved.theme;
+    if (typeof saved.task === 'string') taskInput.value = saved.task;
   } catch (e) {}
   workInput.value = DURATIONS.work;
   shortInput.value = DURATIONS.short;
   longInput.value = DURATIONS.long;
+  intervalInput.value = longBreakInterval;
+  soundSelect.value = soundType;
+  volumeInput.value = Math.round(volume * 100);
   cycleDisplay.textContent = `완료한 뽀모도로: ${completedPomodoros}`;
+  taskDisplay.textContent = taskInput.value;
+  applyTheme(theme, false);
 }
 
 function saveSettings() {
@@ -143,9 +293,23 @@ function saveSettings() {
     work: DURATIONS.work,
     short: DURATIONS.short,
     long: DURATIONS.long,
+    interval: longBreakInterval,
+    accent: accentColor,
+    sound: soundType,
+    volume: volume,
     autoStart: autoStartInput.checked,
-    completed: completedPomodoros
+    countdownBeep: countdownBeepInput.checked,
+    completed: completedPomodoros,
+    theme: theme,
+    task: taskInput.value
   }));
+}
+
+function applyTheme(newTheme, persist = true) {
+  theme = newTheme;
+  root.setAttribute('data-theme', theme);
+  themeBtn.textContent = theme === 'dark' ? '🌙' : '☀️';
+  if (persist) saveSettings();
 }
 
 function formatTime(sec) {
@@ -155,19 +319,19 @@ function formatTime(sec) {
 }
 
 function updateDisplay() {
-  timeDisplay.textContent = formatTime(remaining);
-  const progress = 1 - remaining / totalSeconds;
-  ring.style.strokeDashoffset = CIRCUMFERENCE * progress;
-  document.title = `${formatTime(remaining)} - ${MODE_LABEL[mode]} | 뽀모도로`;
+  const text = formatTime(remaining);
+  timeDisplay.textContent = text;
+  focusTime.textContent = text;
+  const pct = 100 - (remaining / totalSeconds) * 100;
+  donut.style.background = `conic-gradient(${accentColor} 0% ${pct}%, var(--track) ${pct}% 100%)`;
+  document.title = `${text} - ${MODE_LABEL[mode]} | 뽀모도로`;
 }
 
 function setMode(newMode, resetTimer = true) {
   mode = newMode;
-  document.querySelectorAll('.mode-btn').forEach(btn => {
+  document.querySelectorAll('#modeSwitch .chip').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.mode === mode);
   });
-  ring.setAttribute('stroke', MODE_COLOR[mode]);
-  body.className = `min-h-screen flex items-center justify-center bg-gradient-to-br ${MODE_BG[mode]} text-white`;
   if (resetTimer) {
     pause();
     totalSeconds = DURATIONS[mode] * 60;
@@ -179,6 +343,9 @@ function setMode(newMode, resetTimer = true) {
 function tick() {
   remaining--;
   updateDisplay();
+  if (countdownBeepInput.checked && remaining > 0 && remaining <= 5) {
+    playTick();
+  }
   if (remaining <= 0) {
     finishSession();
   }
@@ -191,7 +358,7 @@ function finishSession() {
     completedPomodoros++;
     cycleDisplay.textContent = `완료한 뽀모도로: ${completedPomodoros}`;
     saveSettings();
-    const next = completedPomodoros % 4 === 0 ? 'long' : 'short';
+    const next = completedPomodoros % longBreakInterval === 0 ? 'long' : 'short';
     setMode(next);
   } else {
     setMode('work');
@@ -201,26 +368,53 @@ function finishSession() {
   }
 }
 
-function playAlarm() {
+function getAudioCtx() {
+  if (!window._pomoCtx) {
+    window._pomoCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  return window._pomoCtx;
+}
+
+function beep(freq, start, dur, type = 'sine', peak = 0.3) {
+  const ctx = getAudioCtx();
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.frequency.value = freq;
+  osc.type = type;
+  const g = peak * volume;
+  gain.gain.setValueAtTime(0.0001, ctx.currentTime + start);
+  gain.gain.exponentialRampToValueAtTime(Math.max(g, 0.0001), ctx.currentTime + start + 0.02);
+  gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + start + dur);
+  osc.connect(gain).connect(ctx.destination);
+  osc.start(ctx.currentTime + start);
+  osc.stop(ctx.currentTime + start + dur);
+}
+
+function playTick() {
+  try { beep(1500, 0, 0.08, 'square', 0.15); } catch (e) {}
+}
+
+function playSound(type) {
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const beep = (freq, start, dur) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.frequency.value = freq;
-      osc.type = 'sine';
-      gain.gain.setValueAtTime(0.0001, ctx.currentTime + start);
-      gain.gain.exponentialRampToValueAtTime(0.3, ctx.currentTime + start + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + start + dur);
-      osc.connect(gain).connect(ctx.destination);
-      osc.start(ctx.currentTime + start);
-      osc.stop(ctx.currentTime + start + dur);
-    };
-    beep(880, 0, 0.25);
-    beep(1046, 0.3, 0.25);
-    beep(1318, 0.6, 0.4);
+    if (type === 'classic') {
+      beep(880, 0, 0.25);
+      beep(1046, 0.3, 0.25);
+      beep(1318, 0.6, 0.4);
+    } else if (type === 'chime') {
+      beep(1318, 0, 0.6, 'sine', 0.25);
+      beep(1568, 0.15, 0.7, 'sine', 0.2);
+      beep(1976, 0.3, 0.9, 'sine', 0.18);
+    } else if (type === 'digital') {
+      beep(1200, 0, 0.1, 'square', 0.2);
+      beep(1200, 0.15, 0.1, 'square', 0.2);
+      beep(1200, 0.3, 0.1, 'square', 0.2);
+    }
   } catch (e) {}
-  if (Notification && Notification.permission === 'granted') {
+}
+
+function playAlarm() {
+  playSound(soundType);
+  if (window.Notification && Notification.permission === 'granted') {
     new Notification(`${MODE_LABEL[mode]} 종료!`, { body: '다음 단계를 시작하세요.' });
   }
 }
@@ -256,7 +450,7 @@ function resetCurrent() {
 function skipSession() {
   pause();
   if (mode === 'work') {
-    const next = (completedPomodoros + 1) % 4 === 0 ? 'long' : 'short';
+    const next = (completedPomodoros + 1) % longBreakInterval === 0 ? 'long' : 'short';
     setMode(next);
   } else {
     setMode('work');
@@ -264,7 +458,7 @@ function skipSession() {
 }
 
 modeSwitch.addEventListener('click', (e) => {
-  const btn = e.target.closest('.mode-btn');
+  const btn = e.target.closest('.chip');
   if (!btn) return;
   setMode(btn.dataset.mode);
 });
@@ -290,15 +484,60 @@ skipBtn.addEventListener('click', skipSession);
   });
 });
 
+intervalInput.addEventListener('change', () => {
+  longBreakInterval = Math.max(2, parseInt(intervalInput.value) || 4);
+  intervalInput.value = longBreakInterval;
+  saveSettings();
+});
+
+soundSelect.addEventListener('change', () => {
+  soundType = soundSelect.value;
+  saveSettings();
+});
+
+previewSoundBtn.addEventListener('click', () => playSound(soundSelect.value));
+
+volumeInput.addEventListener('input', () => {
+  volume = parseInt(volumeInput.value) / 100;
+  saveSettings();
+});
+
 autoStartInput.addEventListener('change', saveSettings);
+countdownBeepInput.addEventListener('change', saveSettings);
+
+taskInput.addEventListener('input', () => {
+  taskDisplay.textContent = taskInput.value;
+  focusTask.textContent = taskInput.value;
+  saveSettings();
+});
+
+themeBtn.addEventListener('click', () => {
+  applyTheme(theme === 'dark' ? 'light' : 'dark');
+});
+
+focusBtn.addEventListener('click', () => {
+  focusTask.textContent = taskInput.value;
+  focusOverlay.classList.remove('hidden');
+});
+focusExitBtn.addEventListener('click', () => {
+  focusOverlay.classList.add('hidden');
+});
 
 document.addEventListener('keydown', (e) => {
   if (e.code === 'Space' && e.target.tagName !== 'INPUT') {
     e.preventDefault();
     toggleStart();
   }
+  if (e.code === 'Escape') {
+    focusOverlay.classList.add('hidden');
+  }
 });
 
+if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
+  theme = 'light';
+}
+
+buildSwatches();
 loadSettings();
 setMode('work');
 </script>
