@@ -112,12 +112,21 @@
   .section-label { font-size: 0.68rem; font-weight: 600; letter-spacing: 0.1em; color: var(--sub); text-transform: uppercase; }
   .divider { border-top: 1px solid var(--border-soft); }
 
-  #sidebar { width: min(360px, 100%); }
+  #sidebar { width: min(360px, 100%); overscroll-behavior: contain; }
   #sidebar::-webkit-scrollbar { width: 6px; }
   #sidebar::-webkit-scrollbar-thumb { background: var(--track); border-radius: 3px; }
+  /* enforce the scrollable settings panel natively, independent of the Tailwind CDN */
+  @media (min-width: 768px) {
+    #sidebar { height: 100vh; overflow-y: auto; }
+  }
 
   #focusOverlay { position: fixed; inset: 0; background: var(--stage); z-index: 200; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 28px; }
   #focusOverlay.hidden { display: none; }
+
+  main { overscroll-behavior: contain; }
+  @media (min-width: 768px) {
+    main { height: 100vh; overflow-y: auto; }
+  }
 </style>
 </head>
 <body class="min-h-screen w-full flex flex-col md:flex-row" style="background-color: var(--stage);">
