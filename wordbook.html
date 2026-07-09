@@ -50,8 +50,9 @@
         #worksheetViewOverlay .wsv-btn.close { background: #64748b; }
         #worksheetViewOverlay .answer-page { margin-top: 40px; padding-top: 24px; border-top: 3px dashed #cbd5e1; }
         @media print {
+            html, body { height: auto !important; overflow: visible !important; }
             body > *:not(#worksheetViewOverlay) { display: none !important; }
-            #worksheetViewOverlay { position: static !important; }
+            #worksheetViewOverlay { position: static !important; overflow: visible !important; height: auto !important; }
             #worksheetViewOverlay .wsv-toolbar { display: none !important; }
             #worksheetViewOverlay .answer-page { page-break-before: always; border-top: none; margin-top: 0; padding-top: 0; }
         }
