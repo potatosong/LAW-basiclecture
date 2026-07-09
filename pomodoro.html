@@ -58,7 +58,7 @@
   .panel { background: var(--card); border: 1px solid var(--border-soft); }
 
   /* --- pie timer: a solid disc that shrinks as time elapses, not a ring --- */
-  .timer-wrap { position: relative; width: min(44vh, 28vw, 360px); aspect-ratio: 1/1; }
+  .timer-wrap { position: relative; width: min(38vh, 26vw, 340px); aspect-ratio: 1/1; }
   .donut {
     width: 100%; height: 100%; border-radius: 50%;
     box-shadow: 0 0 0 1px var(--border-soft) inset, 0 12px 32px rgba(0,0,0,0.10);
@@ -124,9 +124,9 @@
 <body class="min-h-screen w-full flex flex-col lg:flex-row" style="background-color: var(--stage);">
 
   <!-- main stage -->
-  <main class="flex-1 flex flex-col relative px-6 py-6 lg:px-14 lg:py-10 min-h-[100vh] lg:min-h-0">
+  <main class="flex-1 flex flex-col relative px-6 py-6 lg:px-14 lg:py-8 min-h-[100vh] lg:min-h-0 lg:h-screen lg:overflow-y-auto">
 
-    <div class="flex items-center justify-between mb-6 lg:mb-10">
+    <div class="flex items-center justify-between mb-6 lg:mb-6">
       <h1 class="text-sm font-semibold tracking-widest sub">🍅 POMODORO</h1>
       <div class="flex items-center gap-2">
         <button id="focusBtn" class="icon-btn w-9 h-9 rounded-full flex items-center justify-center text-sm" title="집중 모드">⛶</button>
@@ -134,7 +134,7 @@
       </div>
     </div>
 
-    <div class="flex-1 flex flex-col items-center justify-center gap-8 lg:gap-10">
+    <div class="flex-1 flex flex-col items-center justify-center gap-6 lg:gap-6 py-4">
 
       <!-- mode switcher -->
       <div id="modeSwitch" class="flex gap-6 text-sm font-medium">
@@ -260,7 +260,7 @@
 </div>
 
 <script>
-const ACCENT_COLORS = ['#6b7f95', '#a15c5c', '#7f9678', '#c3a35a', '#9c7e97', '#b97b62'];
+const ACCENT_COLORS = ['#6794c1', '#d4867d', '#5dac7e', '#d1a861', '#aa8bc1', '#ca8968'];
 const DURATION_PRESETS = { work: [15, 25, 45, 60], short: [5, 10, 15], long: [15, 20, 30] };
 const SOUND_LABEL = { classic: '클래식 (트리플 톤)', chime: '차임벨', digital: '디지털 비프' };
 const DURATIONS = { work: 25, short: 5, long: 15 };
@@ -329,8 +329,6 @@ function applyAccent() {
   document.querySelectorAll('.swatch').forEach(s => s.classList.toggle('selected', s.dataset.color === accentColor));
   startBtn.style.background = accentColor;
   startBtn.style.boxShadow = `0 8px 24px ${accentColor}55`;
-  timeDisplay.style.color = accentColor;
-  focusTime.style.color = accentColor;
   root.style.setProperty('--accent', accentColor);
 }
 
