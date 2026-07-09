@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>뽀모도로 타이머</title>
+<meta name="theme-color" content="#4f46e5">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="뽀모도로">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='90'>🍅</text></svg>">
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  html, body { height: 100%; }
+  body {
+    font-family: 'Segoe UI', 'Malgun Gothic', sans-serif;
+    transition: background 0.6s ease;
+  }
+  .ring-track { stroke: rgba(255,255,255,0.15); }
+  .ring-progress { stroke-linecap: round; transition: stroke-dashoffset 1s linear, stroke 0.6s ease; }
+  .mode-btn { transition: all 0.2s ease; }
+  .mode-btn.active { background: rgba(255,255,255,0.25); }
+  .ctrl-btn { transition: transform 0.15s ease, background 0.2s ease; }
+  .ctrl-btn:active { transform: scale(0.94); }
+  @keyframes pulse-soft { 0%,100%{opacity:1} 50%{opacity:.6} }
+  .running-pulse { animation: pulse-soft 2s ease-in-out infinite; }
+  input[type=number]::-webkit-inner-spin-button { opacity: 1; }
+  .fade-in { animation: fadeIn 0.3s ease-out; }
+  @keyframes fadeIn { from{opacity:0; transform:translateY(4px)} to{opacity:1; transform:translateY(0)} }
+</style>
+</head>
+<body class="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-900 via-slate-900 to-slate-900 text-white" id="body">
+
+<div class="w-full max-w-md px-6 py-8">
+
+  <h1 class="text-center text-lg font-semibold tracking-widest text-white/70 mb-6">🍅 POMODORO</h1>
+
+  <!-- mode switcher -->
+  <div id="modeSwitch" class="flex gap-2 bg-white/10 rounded-full p-1 mb-8 text-sm font-medium">
+    <button data-mode="work" class="mode-btn active flex-1 py-2 rounded-full">집중</button>
+    <button data-mode="short" class="mode-btn flex-1 py-2 rounded-full">짧은 휴식</button>
+    <button data-mode="long" class="mode-btn flex-1 py-2 rounded-full">긴 휴식</button>
+  </div>
+
+  <!-- timer ring -->
+  <div class="relative flex items-center justify-center mb-8">
+    <svg width="280" height="280" viewBox="0 0 280 280" class="-rotate-90">
+      <circle cx="140" cy="140" r="126" fill="none" stroke-width="10" class="ring-track"></circle>
+      <circle id="ringProgress" cx="140" cy="140" r="126" fill="none" stroke-width="10"
+        stroke="#818cf8" class="ring-progress"
+        stroke-dasharray="791.68" stroke-dashoffset="0"></circle>
+    </svg>
+    <div class="absolute flex flex-col items-center">
+      <span id="timeDisplay" class="text-6xl font-bold tabular-nums">25:00</span>
+      <span id="cycleDisplay" class="mt-2 text-sm text-white/50">완료한 뽀모도로: 0</span>
+    </div>
+  </div>
+
+  <!-- controls -->
+  <div class="flex items-center justify-center gap-4 mb-8">
+    <button id="resetBtn" class="ctrl-btn w-14 h-14 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-xl" title="초기화">↺</button>
+    <button id="startBtn" class="ctrl-btn w-20 h-20 rounded-full bg-indigo-500 hover:bg-indigo-400 flex items-center justify-center text-2xl font-bold shadow-lg shadow-indigo-500/30">▶</button>
+    <button id="skipBtn" class="ctrl-btn w-14 h-14 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-xl" title="다음 단계로">⏭</button>
+  </div>
+
+  <!-- settings -->
+  <details class="text-sm text-white/70">
+    <summary class="cursor-pointer text-center select-none hover:text-white">⚙ 시간 설정</summary>
+    <div class="grid grid-cols-3 gap-3 mt-4 fade-in">
+      <label class="flex flex-col items-center gap-1">
+        <span>집중(분)</span>
+        <input id="workInput" type="number" min="1" max="180" value="25" class="w-16 text-center rounded-lg bg-white/10 py-1 text-white outline-none focus:ring-2 focus:ring-indigo-400">
+      </label>
+      <label class="flex flex-col items-center gap-1">
+        <span>짧은 휴식</span>
+        <input id="shortInput" type="number" min="1" max="60" value="5" class="w-16 text-center rounded-lg bg-white/10 py-1 text-white outline-none focus:ring-2 focus:ring-indigo-400">
+      </label>
+      <label class="flex flex-col items-center gap-1">
+        <span>긴 휴식</span>
+        <input id="longInput" type="number" min="1" max="90" value="15" class="w-16 text-center rounded-lg bg-white/10 py-1 text-white outline-none focus:ring-2 focus:ring-indigo-400">
+      </label>
+    </div>
+    <div class="mt-4 flex items-center justify-center gap-2">
+      <label class="flex items-center gap-2 cursor-pointer">
+        <input id="autoStartInput" type="checkbox" class="accent-indigo-400 w-4 h-4">
+        <span>다음 단계 자동 시작</span>
+      </label>
+    </div>
+  </details>
+
+</div>
+
+<script>
+const DURATIONS = { work: 25, short: 5, long: 15 };
+const MODE_LABEL = { work: '집중', short: '짧은 휴식', long: '긴 휴식' };
+const MODE_COLOR = { work: '#818cf8', short: '#34d399', long: '#38bdf8' };
+const MODE_BG = {
+  work: 'from-indigo-900 via-slate-900 to-slate-900',
+  short: 'from-emerald-900 via-slate-900 to-slate-900',
+  long: 'from-sky-900 via-slate-900 to-slate-900'
+};
+
+let mode = 'work';
+let totalSeconds = DURATIONS.work * 60;
+let remaining = totalSeconds;
+let running = false;
+let timerId = null;
+let completedPomodoros = 0;
+
+const timeDisplay = document.getElementById('timeDisplay');
+const cycleDisplay = document.getElementById('cycleDisplay');
+const startBtn = document.getElementById('startBtn');
+const resetBtn = document.getElementById('resetBtn');
+const skipBtn = document.getElementById('skipBtn');
+const ring = document.getElementById('ringProgress');
+const body = document.getElementById('body');
+const modeSwitch = document.getElementById('modeSwitch');
+const workInput = document.getElementById('workInput');
+const shortInput = document.getElementById('shortInput');
+const longInput = document.getElementById('longInput');
+const autoStartInput = document.getElementById('autoStartInput');
+
+const CIRCUMFERENCE = 2 * Math.PI * 126;
+ring.setAttribute('stroke-dasharray', CIRCUMFERENCE);
+
+function loadSettings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('pomodoroSettings') || '{}');
+    if (saved.work) DURATIONS.work = saved.work;
+    if (saved.short) DURATIONS.short = saved.short;
+    if (saved.long) DURATIONS.long = saved.long;
+    if (typeof saved.autoStart === 'boolean') autoStartInput.checked = saved.autoStart;
+    if (typeof saved.completed === 'number') completedPomodoros = saved.completed;
+  } catch (e) {}
+  workInput.value = DURATIONS.work;
+  shortInput.value = DURATIONS.short;
+  longInput.value = DURATIONS.long;
+  cycleDisplay.textContent = `완료한 뽀모도로: ${completedPomodoros}`;
+}
+
+function saveSettings() {
+  localStorage.setItem('pomodoroSettings', JSON.stringify({
+    work: DURATIONS.work,
+    short: DURATIONS.short,
+    long: DURATIONS.long,
+    autoStart: autoStartInput.checked,
+    completed: completedPomodoros
+  }));
+}
+
+function formatTime(sec) {
+  const m = Math.floor(sec / 60).toString().padStart(2, '0');
+  const s = Math.floor(sec % 60).toString().padStart(2, '0');
+  return `${m}:${s}`;
+}
+
+function updateDisplay() {
+  timeDisplay.textContent = formatTime(remaining);
+  const progress = 1 - remaining / totalSeconds;
+  ring.style.strokeDashoffset = CIRCUMFERENCE * progress;
+  document.title = `${formatTime(remaining)} - ${MODE_LABEL[mode]} | 뽀모도로`;
+}
+
+function setMode(newMode, resetTimer = true) {
+  mode = newMode;
+  document.querySelectorAll('.mode-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.mode === mode);
+  });
+  ring.setAttribute('stroke', MODE_COLOR[mode]);
+  body.className = `min-h-screen flex items-center justify-center bg-gradient-to-br ${MODE_BG[mode]} text-white`;
+  if (resetTimer) {
+    pause();
+    totalSeconds = DURATIONS[mode] * 60;
+    remaining = totalSeconds;
+    updateDisplay();
+  }
+}
+
+function tick() {
+  remaining--;
+  updateDisplay();
+  if (remaining <= 0) {
+    finishSession();
+  }
+}
+
+function finishSession() {
+  pause();
+  playAlarm();
+  if (mode === 'work') {
+    completedPomodoros++;
+    cycleDisplay.textContent = `완료한 뽀모도로: ${completedPomodoros}`;
+    saveSettings();
+    const next = completedPomodoros % 4 === 0 ? 'long' : 'short';
+    setMode(next);
+  } else {
+    setMode('work');
+  }
+  if (autoStartInput.checked) {
+    start();
+  }
+}
+
+function playAlarm() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const beep = (freq, start, dur) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.frequency.value = freq;
+      osc.type = 'sine';
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime + start);
+      gain.gain.exponentialRampToValueAtTime(0.3, ctx.currentTime + start + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + start + dur);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(ctx.currentTime + start);
+      osc.stop(ctx.currentTime + start + dur);
+    };
+    beep(880, 0, 0.25);
+    beep(1046, 0.3, 0.25);
+    beep(1318, 0.6, 0.4);
+  } catch (e) {}
+  if (Notification && Notification.permission === 'granted') {
+    new Notification(`${MODE_LABEL[mode]} 종료!`, { body: '다음 단계를 시작하세요.' });
+  }
+}
+
+function start() {
+  if (running) return;
+  running = true;
+  startBtn.textContent = '❚❚';
+  startBtn.classList.add('running-pulse');
+  timerId = setInterval(tick, 1000);
+  if (window.Notification && Notification.permission === 'default') {
+    Notification.requestPermission();
+  }
+}
+
+function pause() {
+  running = false;
+  clearInterval(timerId);
+  startBtn.textContent = '▶';
+  startBtn.classList.remove('running-pulse');
+}
+
+function toggleStart() {
+  running ? pause() : start();
+}
+
+function resetCurrent() {
+  pause();
+  remaining = totalSeconds;
+  updateDisplay();
+}
+
+function skipSession() {
+  pause();
+  if (mode === 'work') {
+    const next = (completedPomodoros + 1) % 4 === 0 ? 'long' : 'short';
+    setMode(next);
+  } else {
+    setMode('work');
+  }
+}
+
+modeSwitch.addEventListener('click', (e) => {
+  const btn = e.target.closest('.mode-btn');
+  if (!btn) return;
+  setMode(btn.dataset.mode);
+});
+
+startBtn.addEventListener('click', toggleStart);
+resetBtn.addEventListener('click', resetCurrent);
+skipBtn.addEventListener('click', skipSession);
+
+[workInput, shortInput, longInput].forEach(input => {
+  input.addEventListener('change', () => {
+    DURATIONS.work = Math.max(1, parseInt(workInput.value) || 25);
+    DURATIONS.short = Math.max(1, parseInt(shortInput.value) || 5);
+    DURATIONS.long = Math.max(1, parseInt(longInput.value) || 15);
+    workInput.value = DURATIONS.work;
+    shortInput.value = DURATIONS.short;
+    longInput.value = DURATIONS.long;
+    saveSettings();
+    if (!running) {
+      totalSeconds = DURATIONS[mode] * 60;
+      remaining = totalSeconds;
+      updateDisplay();
+    }
+  });
+});
+
+autoStartInput.addEventListener('change', saveSettings);
+
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' && e.target.tagName !== 'INPUT') {
+    e.preventDefault();
+    toggleStart();
+  }
+});
+
+loadSettings();
+setMode('work');
+</script>
+</body>
+</html>
