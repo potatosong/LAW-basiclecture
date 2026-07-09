@@ -98,6 +98,9 @@
         <label class="flex items-center gap-2 text-sm text-slate-700 mt-1.5 cursor-pointer">
             <input type="checkbox" id="worksheetAnswerCheck"> 정답 페이지 함께 출력
         </label>
+        <label class="flex items-center gap-2 text-sm text-slate-700 mt-1.5 cursor-pointer">
+            <input type="checkbox" id="worksheetExcludeMemorizedCheck"> 암기된 단어 제외
+        </label>
 
         <div class="flex gap-2 mt-5">
             <button onclick="closeWorksheetModal()" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-2.5 rounded-xl text-sm font-bold transition">취소</button>
@@ -972,8 +975,17 @@ function getWordsForFolderId(folderId){
     return words.filter(w=>ids.includes(w.folderId));
 }
 function escapeHtml(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function getOrderedFolderList(){
+    const roots=folderTree.filter(f=>f.parentId===null);
+    let ordered=[];
+    roots.forEach(root=>{
+        ordered.push(root);
+        folderTree.filter(f=>f.parentId===root.id).forEach(child=>ordered.push(child));
+    });
+    return ordered;
+}
 function openWorksheetModal(){
-    document.getElementById('worksheetFolderList').innerHTML=folderTree.map(f=>{
+    document.getElementById('worksheetFolderList').innerHTML=getOrderedFolderList().map(f=>{
         const par=f.parentId?folderTree.find(x=>x.id===f.parentId):null;
         const lbl=par?`${par.name} > ${f.name}`:f.name;
         const cnt=getWordsForFolderId(f.id).length;
@@ -984,6 +996,7 @@ function openWorksheetModal(){
     }).join('');
     document.getElementById('worksheetRandomCheck').checked=false;
     document.getElementById('worksheetAnswerCheck').checked=false;
+    document.getElementById('worksheetExcludeMemorizedCheck').checked=false;
     document.getElementById('worksheetModal').classList.remove('hidden');
 }
 function closeWorksheetModal(){document.getElementById('worksheetModal').classList.add('hidden');}
@@ -1043,15 +1056,20 @@ function confirmGenerateWorksheet(){
     const mode=document.querySelector('input[name="worksheetMode"]:checked').value;
     const isRandom=document.getElementById('worksheetRandomCheck').checked;
     const includeAnswers=document.getElementById('worksheetAnswerCheck').checked;
-    generateWorksheet(ids,mode,isRandom,includeAnswers);
+    const excludeMemorized=document.getElementById('worksheetExcludeMemorizedCheck').checked;
+    generateWorksheet(ids,mode,isRandom,includeAnswers,excludeMemorized);
 }
-function generateWorksheet(folderIds,mode,isRandom,includeAnswers){
+function generateWorksheet(folderIds,mode,isRandom,includeAnswers,excludeMemorized){
     const folders=folderIds.map(id=>folderTree.find(f=>f.id===id)).filter(Boolean);
     if(folders.length===0)return;
     const seen=new Set(); let list=[];
-    folderIds.forEach(id=>{ getWordsForFolderId(id).forEach(w=>{ if(!seen.has(w.id)){seen.add(w.id);list.push(w);} }); });
-    if(list.length===0){alert("선택한 폴더에 단어가 없습니다.");return;}
-    let sorted=[...list].sort((a,b)=>a.id-b.id);
+    folderIds.forEach(id=>{ getWordsForFolderId(id).forEach(w=>{
+        if(seen.has(w.id))return;
+        if(excludeMemorized&&w.memorized)return;
+        seen.add(w.id);list.push(w);
+    }); });
+    if(list.length===0){alert(excludeMemorized?"암기되지 않은 단어가 없습니다.":"선택한 폴더에 단어가 없습니다.");return;}
+    let sorted=[...list];
     if(isRandom){
         for(let i=sorted.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [sorted[i],sorted[j]]=[sorted[j],sorted[i]]; }
     }
