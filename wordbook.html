@@ -118,6 +118,29 @@
     <div class="wsv-body" id="worksheetViewBody"></div>
 </div>
 
+<div id="bulkAddModal" class="hidden fixed inset-0 bg-black/60 z-[150] flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <h3 class="font-extrabold text-slate-800 mb-1">AI로 단어 일괄 추가</h3>
+        <p class="text-xs text-slate-500 mb-3">단어장 사진을 AI(Claude, ChatGPT, Gemini 등)에 보내고 아래 프롬프트로 받은 JSON을 붙여넣거나 파일로 업로드하세요.</p>
+
+        <button onclick="copyBulkAddPrompt()" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold py-2 rounded-xl mb-3 flex items-center justify-center gap-1.5">
+            <i class="fa-solid fa-copy"></i> AI 프롬프트 복사하기
+        </button>
+
+        <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">추가할 폴더</label>
+        <select id="bulkAddFolderSelect" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm mb-3 bg-slate-50"></select>
+
+        <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">JSON 붙여넣기 또는 파일 업로드</label>
+        <input type="file" accept=".json,.txt" onchange="handleBulkAddFile(event)" class="text-xs mb-2">
+        <textarea id="bulkAddTextarea" rows="8" placeholder='[{"word":"engage","meanings":["참가하다"],"synonyms":[""],"examples":["She engaged in the discussion."],"extraForms":""}]' class="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-mono mb-4"></textarea>
+
+        <div class="flex gap-2">
+            <button onclick="closeBulkAddModal()" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-2.5 rounded-xl text-sm font-bold transition">취소</button>
+            <button onclick="confirmBulkAdd()" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-xl text-sm font-bold transition">추가하기</button>
+        </div>
+    </div>
+</div>
+
 <div id="app">
     <aside id="sidebar" class="bg-slate-900 text-slate-300 border-r border-slate-800">
         <div class="p-4 border-b border-slate-800 flex items-center gap-3 shrink-0">
@@ -157,6 +180,9 @@
         <div class="p-3 border-t border-slate-800 space-y-2 shrink-0">
             <button onclick="addRootFolder()" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5">
                 <i class="fa-solid fa-plus"></i> 새 메인 폴더
+            </button>
+            <button onclick="openBulkAddModal()" class="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs py-2 rounded-xl font-medium transition border border-slate-700 flex items-center justify-center gap-1.5">
+                <i class="fa-solid fa-wand-magic-sparkles text-amber-400"></i> AI로 단어 일괄 추가
             </button>
             <div class="grid grid-cols-2 gap-1.5">
                 <button onclick="exportJsonFile()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs py-2 rounded-xl font-medium transition border border-slate-700 flex items-center justify-center gap-1">
@@ -967,6 +993,87 @@ function updatePlayUI(playing){const b=document.getElementById('playAllBtn');if(
 
 function exportJsonFile(){const blob=new Blob([JSON.stringify({folderTree,words},null,2)],{type:"application/json"});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`wordbook_${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(url);}
 function importJsonFile(e){const file=e.target.files[0];if(!file)return;const reader=new FileReader();reader.onload=(ev)=>{try{const res=JSON.parse(ev.target.result);if(res.folderTree&&res.words){folderTree=res.folderTree;words=res.words;saveData();renderFolders();renderWords();alert("복원 성공!");}}catch(err){alert("파일 오류");}e.target.value='';};reader.readAsText(file);}
+
+// ── AI로 단어 일괄 추가 ──
+const BULK_ADD_PROMPT_TEMPLATE=`다음 사진 속 영단어장 페이지의 내용을 인식해서, 아래 JSON 형식으로만 응답해줘. 다른 설명 없이 JSON 배열만 출력해줘.
+
+[
+  {
+    "word": "영단어",
+    "meanings": ["뜻1", "뜻2"],
+    "synonyms": ["뜻1의 유의어(없으면 빈 문자열)", "뜻2의 유의어"],
+    "examples": ["예문1", "예문2"],
+    "extraForms": "파생어 (예: n. word / adj. word), 없으면 빈 문자열"
+  }
+]
+
+규칙:
+- meanings, synonyms, examples는 항상 배열로 작성.
+- synonyms 배열의 길이는 meanings와 동일하게 맞추고, 유의어가 없으면 빈 문자열("")로 채워줘.
+- 사진에 있는 단어마다 위 객체 형태로 만들어서 하나의 배열에 모두 담아줘.`;
+function copyBulkAddPrompt(){
+    if(navigator.clipboard?.writeText){
+        navigator.clipboard.writeText(BULK_ADD_PROMPT_TEMPLATE)
+            .then(()=>alert("프롬프트가 복사되었습니다. AI 채팅에 사진과 함께 붙여넣어 보내세요."))
+            .catch(()=>window.prompt("복사에 실패했습니다. 아래 내용을 직접 선택해 복사하세요:",BULK_ADD_PROMPT_TEMPLATE));
+    } else {
+        window.prompt("아래 내용을 직접 선택해 복사하세요:",BULK_ADD_PROMPT_TEMPLATE);
+    }
+}
+function openBulkAddModal(){
+    const sel=document.getElementById('bulkAddFolderSelect');
+    sel.innerHTML=getOrderedFolderList().map(f=>{
+        const par=f.parentId?folderTree.find(x=>x.id===f.parentId):null;
+        const lbl=par?`${par.name} > ${f.name}`:f.name;
+        return `<option value="${f.id}">${escapeHtml(lbl)}</option>`;
+    }).join('');
+    if(activeFolderId)sel.value=activeFolderId;
+    document.getElementById('bulkAddTextarea').value='';
+    document.getElementById('bulkAddModal').classList.remove('hidden');
+}
+function closeBulkAddModal(){document.getElementById('bulkAddModal').classList.add('hidden');}
+function handleBulkAddFile(e){
+    const file=e.target.files[0];if(!file)return;
+    const reader=new FileReader();
+    reader.onload=(ev)=>{document.getElementById('bulkAddTextarea').value=ev.target.result;};
+    reader.readAsText(file);
+    e.target.value='';
+}
+function normalizeBulkWord(raw,folderId,idx){
+    if(!raw||typeof raw.word!=='string'||!raw.word.trim())return null;
+    let meanings=raw.meanings;
+    if(typeof meanings==='string')meanings=[meanings];
+    if(!Array.isArray(meanings)||meanings.length===0)meanings=['뜻 없음'];
+    meanings=meanings.map(m=>String(m));
+    let synonyms=raw.synonyms;
+    if(typeof synonyms==='string')synonyms=[synonyms];
+    if(!Array.isArray(synonyms))synonyms=[];
+    synonyms=synonyms.map(s=>String(s));
+    while(synonyms.length<meanings.length)synonyms.push('');
+    synonyms=synonyms.slice(0,meanings.length);
+    let examples=raw.examples;
+    if(typeof examples==='string')examples=examples.trim()?[examples.trim()]:[];
+    if(!Array.isArray(examples))examples=[];
+    examples=examples.map(ex=>String(ex));
+    const extraForms=typeof raw.extraForms==='string'?raw.extraForms:'';
+    return{id:Date.now()+idx,folderId,word:raw.word.trim(),meanings,synonyms,extraForms,examples,memorized:false};
+}
+function confirmBulkAdd(){
+    const folderId=document.getElementById('bulkAddFolderSelect').value;
+    if(!folderId){alert("폴더를 선택하세요.");return;}
+    const text=document.getElementById('bulkAddTextarea').value.trim();
+    if(!text){alert("JSON 내용을 입력하거나 파일을 업로드하세요.");return;}
+    let data;
+    try{data=JSON.parse(text);}catch(e){alert("JSON 형식이 올바르지 않습니다.");return;}
+    const arr=Array.isArray(data)?data:(Array.isArray(data.words)?data.words:null);
+    if(!arr){alert('JSON은 배열이거나 {"words":[...]} 형태여야 합니다.');return;}
+    const newWords=arr.map((raw,idx)=>normalizeBulkWord(raw,folderId,idx)).filter(Boolean);
+    if(newWords.length===0){alert("추가할 단어가 없습니다. JSON 형식을 확인하세요.");return;}
+    words.push(...newWords);
+    saveData();renderFolders();renderWords();
+    closeBulkAddModal();
+    alert(`${newWords.length}개의 단어를 추가했습니다.`);
+}
 
 // ── 학습지 생성 ──
 function getWordsForFolderId(folderId){
