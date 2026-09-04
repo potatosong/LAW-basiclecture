@@ -237,6 +237,9 @@
                 <button onclick="openStudyModal()" class="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-2.5 py-1.5 rounded-lg text-[11px] font-extrabold shadow transition flex items-center gap-1 whitespace-nowrap">
                     <i class="fa-solid fa-gamepad text-amber-300 text-xs"></i> 학습 센터
                 </button>
+                <button onclick="openGameCenterModal()" class="bg-gradient-to-r from-fuchsia-600 to-rose-500 text-white px-2.5 py-1.5 rounded-lg text-[11px] font-extrabold shadow transition flex items-center gap-1 whitespace-nowrap">
+                    <i class="fa-solid fa-dice text-amber-200 text-xs"></i> 게임 센터
+                </button>
                 <button onclick="toggleHideExtra()" id="hideExtraBtn" class="bg-slate-100 text-slate-600 border border-slate-200 px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition whitespace-nowrap flex items-center gap-1">
                     <i class="fa-solid fa-file-circle-plus text-purple-500 text-xs"></i> 부가정보
                 </button>
@@ -330,7 +333,6 @@
             <button onclick="setStudyMode('spelling')" id="tab_spelling" class="px-2.5 py-1.5 rounded-lg study-tab text-slate-400 hover:text-white whitespace-nowrap">✍️ 철자입력</button>
             <button onclick="setStudyMode('choice')" id="tab_choice" class="px-2.5 py-1.5 rounded-lg study-tab text-slate-400 hover:text-white whitespace-nowrap">🔢 객관식</button>
             <button onclick="setStudyMode('blank')" id="tab_blank" class="px-2.5 py-1.5 rounded-lg study-tab text-slate-400 hover:text-white whitespace-nowrap">🕳️ 예문빈칸</button>
-            <button onclick="setStudyMode('match')" id="tab_match" class="px-2.5 py-1.5 rounded-lg study-tab text-slate-400 hover:text-white whitespace-nowrap">🧩 짝맞추기</button>
         </div>
         <button onclick="closeStudyModal()" class="bg-slate-800 hover:bg-rose-600 w-9 h-9 rounded-full flex items-center justify-center transition shrink-0"><i class="fa-solid fa-xmark"></i></button>
     </div>
@@ -341,6 +343,20 @@
         <button onclick="studyPrev()" class="bg-slate-800 hover:bg-slate-700 px-4 py-3 rounded-2xl font-bold text-sm transition flex items-center gap-1.5 text-white shrink-0"><i class="fa-solid fa-arrow-left"></i> 이전</button>
         <button onclick="toggleStudyMemorized()" id="studyMemBtn" class="flex-1 py-3 rounded-2xl font-extrabold text-sm transition border flex items-center justify-center gap-2 shadow-lg"></button>
         <button onclick="studyNext()" class="bg-slate-800 hover:bg-slate-700 px-4 py-3 rounded-2xl font-bold text-sm transition flex items-center gap-1.5 text-white shrink-0">다음 <i class="fa-solid fa-arrow-right"></i></button>
+    </div>
+</div>
+
+<!-- 게임 센터 모달 -->
+<div id="gameCenterModal" class="fixed inset-0 bg-slate-950/95 z-50 hidden flex flex-col justify-between p-4 md:p-10 select-none backdrop-blur-md text-white">
+    <div class="max-w-4xl mx-auto w-full flex flex-wrap justify-between items-center gap-2 border-b border-slate-800 pb-3">
+        <div class="flex items-center gap-2">
+            <button onclick="backToGameSelection()" id="gameCenterBackBtn" class="hidden bg-slate-900 border border-slate-800 text-slate-400 hover:text-white px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5"><i class="fa-solid fa-arrow-left"></i> 목록</button>
+            <span id="gameCenterTitle" class="font-extrabold text-sm flex items-center gap-1.5"><i class="fa-solid fa-dice text-rose-400"></i> 게임 센터</span>
+        </div>
+        <button onclick="closeGameCenterModal()" class="bg-slate-800 hover:bg-rose-600 w-9 h-9 rounded-full flex items-center justify-center transition shrink-0"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="flex-1 flex items-center justify-center my-3 max-w-4xl mx-auto w-full text-slate-800">
+        <div id="gameCenterCanvas" class="w-full min-h-[300px] sm:min-h-[380px] bg-white border border-slate-200 rounded-3xl shadow-2xl p-6 sm:p-10 flex flex-col justify-center items-center text-center relative overflow-hidden"></div>
     </div>
 </div>
 
@@ -952,31 +968,21 @@ function openStudyModal(customList){
 }
 function shuffleArray(arr){for(let i=arr.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]];}}
 function closeStudyModal(){
-    clearTimeout(studyNextTimer);clearInterval(matchTimerInterval);
+    clearTimeout(studyNextTimer);
     document.getElementById('studyModal').classList.add('hidden');
     window.removeEventListener('keydown',handleStudyKeys);
     saveData();renderWords();
     if(currentView==='review')renderReviewView();
     updateReviewBadge();
 }
-function handleStudyKeys(e){if(e.key==='Escape'){closeStudyModal();return;}if(studyMode==='match')return;if(studyMode==='flashcard'&&(e.key===' '||e.key==='Spacebar')){e.preventDefault();fcFlipped=!fcFlipped;renderStudyCanvas();}else if(e.key==='ArrowLeft'&&document.activeElement?.tagName!=='INPUT')studyPrev();else if(e.key==='ArrowRight'&&document.activeElement?.tagName!=='INPUT')studyNext();}
+function handleStudyKeys(e){if(e.key==='Escape'){closeStudyModal();return;}if(studyMode==='flashcard'&&(e.key===' '||e.key==='Spacebar')){e.preventDefault();fcFlipped=!fcFlipped;renderStudyCanvas();}else if(e.key==='ArrowLeft'&&document.activeElement?.tagName!=='INPUT')studyPrev();else if(e.key==='ArrowRight'&&document.activeElement?.tagName!=='INPUT')studyNext();}
 function setStudyMode(mode){
-    clearTimeout(studyNextTimer);clearInterval(matchTimerInterval);studyMode=mode;fcFlipped=false;wrongWords=[];
+    clearTimeout(studyNextTimer);studyMode=mode;fcFlipped=false;wrongWords=[];
     document.querySelectorAll('.study-tab').forEach(b=>b.className="px-2.5 py-1.5 rounded-lg study-tab text-slate-400 hover:text-white whitespace-nowrap");
     document.getElementById('tab_'+mode).className="px-2.5 py-1.5 rounded-lg study-tab bg-indigo-600 text-white font-extrabold whitespace-nowrap";
     document.getElementById('choiceDirBtn').classList.toggle('hidden',mode!=='choice');
     document.getElementById('spellModeBtn').classList.toggle('hidden',mode!=='spelling');
     updateChoiceDirBtn();updateSpellModeBtn();
-    const bottomBar=document.getElementById('studyBottomBar');
-    const progressBadge=document.getElementById('studyProgress');
-    if(mode==='match'){
-        if(bottomBar)bottomBar.classList.add('hidden');
-        if(progressBadge)progressBadge.classList.add('hidden');
-        startMatchGame();
-        return;
-    }
-    if(bottomBar)bottomBar.classList.remove('hidden');
-    if(progressBadge)progressBadge.classList.remove('hidden');
     studyList=expandForMode(baseStudyList,mode,choiceDirection);
     if(isShuffleOn)shuffleArray(studyList);
     studyIndex=0;
@@ -986,7 +992,6 @@ function toggleShuffleMode(){
     isShuffleOn=!isShuffleOn;const btn=document.getElementById('studyShuffleBtn');clearTimeout(studyNextTimer);
     if(isShuffleOn){btn.innerHTML=`<i class="fa-solid fa-shuffle text-amber-400"></i> <span class="text-amber-400 font-extrabold">랜덤: ON</span>`;shuffleArray(baseStudyList);}
     else{btn.innerHTML=`<i class="fa-solid fa-shuffle"></i> <span>랜덤: OFF</span>`;baseStudyList=getWordsForFolder();}
-    if(studyMode==='match'){startMatchGame();return;}
     studyList=expandForMode(baseStudyList,studyMode,choiceDirection);
     if(isShuffleOn)shuffleArray(studyList);
     studyIndex=0;fcFlipped=false;renderStudyCanvas();
@@ -1225,14 +1230,63 @@ function selectChoice(idx,el){
     studyNextTimer=setTimeout(()=>{if(!document.getElementById('studyModal').classList.contains('hidden'))studyNext();},1400);
 }
 
+// ── 게임 센터 ──
+let gameWordPool=[], activeGameId=null;
+const GAME_LIST=[
+    {id:'match',icon:'🧩',name:'짝맞추기',desc:'카드를 뒤집어 단어-뜻 짝을 맞춰보세요',color:'from-indigo-500 to-purple-500',start:startMatchGame}
+];
+function openGameCenterModal(){
+    gameWordPool=getWordsForFolder();
+    if(gameWordPool.length===0){alert("게임을 하려면 단어가 있어야 합니다.");return;}
+    document.getElementById('gameCenterModal').classList.remove('hidden');
+    renderGameSelection();
+    window.addEventListener('keydown',handleGameCenterKeys);
+}
+function closeGameCenterModal(){
+    clearInterval(matchTimerInterval);
+    document.getElementById('gameCenterModal').classList.add('hidden');
+    window.removeEventListener('keydown',handleGameCenterKeys);
+    saveData();renderWords();
+    if(currentView==='review')renderReviewView();
+    updateReviewBadge();
+}
+function handleGameCenterKeys(e){
+    if(e.key!=='Escape')return;
+    if(activeGameId)backToGameSelection();
+    else closeGameCenterModal();
+}
+function renderGameSelection(){
+    activeGameId=null;
+    document.getElementById('gameCenterBackBtn').classList.add('hidden');
+    document.getElementById('gameCenterTitle').innerHTML=`<i class="fa-solid fa-dice text-rose-400"></i> 게임 센터`;
+    document.getElementById('gameCenterCanvas').innerHTML=`<div class="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-2xl">
+        ${GAME_LIST.map(g=>`<button onclick="startGame('${g.id}')" class="text-left bg-gradient-to-br ${g.color} text-white rounded-2xl p-5 shadow-lg hover:scale-[1.02] transition flex flex-col gap-2">
+            <span class="text-3xl">${g.icon}</span>
+            <span class="text-lg font-black">${g.name}</span>
+            <span class="text-xs text-white/80 font-medium">${g.desc}</span>
+        </button>`).join('')}
+        <div class="border-2 border-dashed border-slate-200 rounded-2xl p-5 flex flex-col items-center justify-center text-slate-300 text-xs font-bold gap-1.5 min-h-[120px]">
+            <i class="fa-solid fa-plus text-xl"></i> 새 게임 준비 중
+        </div>
+    </div>`;
+}
+function startGame(id){
+    const g=GAME_LIST.find(x=>x.id===id);if(!g)return;
+    activeGameId=id;
+    document.getElementById('gameCenterBackBtn').classList.remove('hidden');
+    document.getElementById('gameCenterTitle').innerHTML=`<span>${g.icon}</span> ${g.name}`;
+    g.start();
+}
+function backToGameSelection(){ clearInterval(matchTimerInterval); renderGameSelection(); }
+
 // ── 짝 맞추기 게임 ──
 function startMatchGame(){
     clearInterval(matchTimerInterval);
-    if(baseStudyList.length<2){
-        document.getElementById('studyCanvas').innerHTML=`<div class="text-center"><i class="fa-solid fa-circle-exclamation text-4xl text-amber-500 mb-3"></i><p class="text-base font-bold text-slate-800">짝 맞추기를 하려면 단어가 2개 이상 필요합니다.</p></div>`;
+    if(gameWordPool.length<2){
+        document.getElementById('gameCenterCanvas').innerHTML=`<div class="text-center"><i class="fa-solid fa-circle-exclamation text-4xl text-amber-500 mb-3"></i><p class="text-base font-bold text-slate-800">짝 맞추기를 하려면 단어가 2개 이상 필요합니다.</p></div>`;
         return;
     }
-    let pool=[...baseStudyList];
+    let pool=[...gameWordPool];
     shuffleArray(pool);
     const n=Math.min(6,pool.length);
     const picks=pool.slice(0,n);
@@ -1252,7 +1306,7 @@ function startMatchGame(){
 }
 function formatMatchTime(sec){const m=Math.floor(sec/60),s=sec%60;return `${m}:${String(s).padStart(2,'0')}`;}
 function renderMatchGame(){
-    const canvas=document.getElementById('studyCanvas');if(!canvas)return;
+    const canvas=document.getElementById('gameCenterCanvas');if(!canvas)return;
     const total=matchCards.length/2;
     const cardsHtml=matchCards.map(c=>{
         const base="aspect-square rounded-xl flex items-center justify-center text-center p-2 text-xs sm:text-sm font-bold transition select-none break-words";
@@ -1295,7 +1349,7 @@ function flipMatchCard(uid){
 }
 function showMatchComplete(){
     const sec=Math.floor((Date.now()-matchStartTime)/1000);
-    document.getElementById('studyCanvas').innerHTML=`<div class="text-center"><i class="fa-solid fa-trophy text-5xl text-amber-400 mb-4"></i><p class="text-2xl font-black text-slate-800">모두 맞췄습니다! 🎉</p><p class="text-slate-500 mt-2 text-sm">시간 ${formatMatchTime(sec)} · 시도 ${matchAttempts}회</p><button onclick="startMatchGame()" class="mt-5 bg-indigo-600 text-white px-6 py-2.5 rounded-xl font-bold text-sm">다시 하기</button></div>`;
+    document.getElementById('gameCenterCanvas').innerHTML=`<div class="text-center"><i class="fa-solid fa-trophy text-5xl text-amber-400 mb-4"></i><p class="text-2xl font-black text-slate-800">모두 맞췄습니다! 🎉</p><p class="text-slate-500 mt-2 text-sm">시간 ${formatMatchTime(sec)} · 시도 ${matchAttempts}회</p><button onclick="startMatchGame()" class="mt-5 bg-indigo-600 text-white px-6 py-2.5 rounded-xl font-bold text-sm">다시 하기</button></div>`;
 }
 
 function escapeRegExp(s){return s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');}
