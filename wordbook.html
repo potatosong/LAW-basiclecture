@@ -956,32 +956,21 @@ function expandForMode(list, mode, direction){
         });
         return expanded;
     } else if(mode==='synonym'){
-        const groups=buildSynonymGroups(list);
-        return list.filter(w=>groups[w.id]&&groups[w.id].length>0).map(w=>({...w,_synonymPartnerIds:groups[w.id]}));
+        return list.filter(w=>getWordSynonymWords(w).length>0).map(w=>({...w,_synonymWords:getWordSynonymWords(w)}));
     }
     return list;
 }
 
-// 뜻/유의어 텍스트가 겹치는 다른 단어를 서로의 "유의어 단어"로 묶는다
-function buildSynonymGroups(list){
-    const tokenIndex={};
-    list.forEach(w=>{
-        const tokens=new Set([...(w.meanings||[]),...(w.synonyms||[])].map(s=>(s||'').trim()).filter(Boolean));
-        w._synTokens=tokens;
-    });
-    list.forEach(w=>{
-        w._synTokens.forEach(t=>{
-            if(!tokenIndex[t])tokenIndex[t]=new Set();
-            tokenIndex[t].add(w.id);
+// 단어의 "유의어" 칸(쉼표로 구분된 영단어 목록)을 실제 영단어 배열로 파싱
+function getWordSynonymWords(w){
+    const set=new Set();
+    (w.synonyms||[]).forEach(s=>{
+        (s||'').split(',').forEach(tok=>{
+            const t=tok.trim();
+            if(t)set.add(t);
         });
     });
-    const groups={};
-    list.forEach(w=>{
-        const partnerIds=new Set();
-        w._synTokens.forEach(t=>{ tokenIndex[t].forEach(id=>{ if(id!==w.id)partnerIds.add(id); }); });
-        groups[w.id]=[...partnerIds];
-    });
-    return groups;
+    return [...set];
 }
 
 function openStudyModal(customList){
@@ -1016,7 +1005,7 @@ function setStudyMode(mode){
     if(isShuffleOn)shuffleArray(studyList);
     studyIndex=0;
     if(mode==='synonym'&&studyList.length===0){
-        document.getElementById('studyCanvas').innerHTML=`<div class="text-center"><i class="fa-solid fa-circle-info text-4xl text-indigo-400 mb-3"></i><p class="text-base font-bold text-slate-800">유의어로 연결된 단어가 아직 없어요.</p><p class="text-slate-500 text-sm mt-2 max-w-sm mx-auto">같은 뜻이나 유의어 텍스트를 공유하는 단어를 2개 이상 등록하면<br>여기서 유의어 찾기를 할 수 있어요.</p></div>`;
+        document.getElementById('studyCanvas').innerHTML=`<div class="text-center"><i class="fa-solid fa-circle-info text-4xl text-indigo-400 mb-3"></i><p class="text-base font-bold text-slate-800">유의어가 등록된 단어가 아직 없어요.</p><p class="text-slate-500 text-sm mt-2 max-w-sm mx-auto">단어 편집 화면의 "≒ 유의어" 칸에 영단어를 입력하면(쉼표로 여러 개 가능)<br>여기서 유의어 찾기를 할 수 있어요.</p></div>`;
         return;
     }
     renderStudyCanvas();
@@ -1167,13 +1156,18 @@ ${item.examples[0]?`<div class="mt-4 pt-4 border-t border-slate-100 w-full max-w
         setTimeout(()=>document.getElementById('blankInp')?.focus(),50);
     } else if(studyMode==='synonym'){
         if(!item._synCandidates){
-            const partnerIds=new Set(item._synonymPartnerIds);
-            const partners=baseStudyList.filter(w=>partnerIds.has(w.id));
-            const distractorPool=baseStudyList.filter(w=>w.id!==item.id&&!partnerIds.has(w.id));
+            const correctWords=[...item._synonymWords];
+            shuffleArray(correctWords);
+            const correctLower=new Set(correctWords.map(w=>w.toLowerCase()));
+            const shownCorrect=correctWords.slice(0,5);
+            let distractorPool=baseStudyList.map(w=>w.word)
+                .concat(FALLBACK_WORDS)
+                .filter(w=>w.toLowerCase()!==item.word.toLowerCase()&&!correctLower.has(w.toLowerCase()));
+            distractorPool=[...new Set(distractorPool)];
             shuffleArray(distractorPool);
-            const distractorCount=Math.max(2,Math.min(6,8-partners.length,distractorPool.length));
+            const distractorCount=Math.max(2,Math.min(6,8-shownCorrect.length,distractorPool.length));
             const distractors=distractorPool.slice(0,distractorCount);
-            let candidates=[...partners.map(w=>({id:w.id,word:w.word,correct:true})),...distractors.map(w=>({id:w.id,word:w.word,correct:false}))];
+            let candidates=[...shownCorrect.map(w=>({word:w,correct:true})),...distractors.map(w=>({word:w,correct:false}))];
             shuffleArray(candidates);
             item._synCandidates=candidates;
             item._synSelected=new Set();
@@ -1202,7 +1196,7 @@ function renderSynonymCanvas(item){
     const candidates=item._synCandidates, positions=item._synPositions;
     const checked=item._synChecked, selected=item._synSelected;
     const bubbles=candidates.map((c,i)=>{
-        const pos=positions[i], isSel=selected.has(c.id);
+        const pos=positions[i], isSel=selected.has(i);
         let cls='bg-white border-slate-300 text-slate-700 hover:border-indigo-400';
         if(checked){
             if(c.correct&&isSel)cls='bg-emerald-100 border-emerald-500 text-emerald-800';
@@ -1212,7 +1206,7 @@ function renderSynonymCanvas(item){
         } else if(isSel){
             cls='bg-indigo-100 border-indigo-500 text-indigo-800';
         }
-        return `<button ${checked?'disabled':''} onclick="toggleSynonymPick(${c.id})" style="left:${pos.left}%;top:${pos.top}%;" class="absolute -translate-x-1/2 -translate-y-1/2 px-3 py-2 rounded-xl border-2 text-xs sm:text-sm font-bold transition select-none ${cls}">${escapeHtml(c.word)}</button>`;
+        return `<button ${checked?'disabled':''} onclick="toggleSynonymPick(${i})" style="left:${pos.left}%;top:${pos.top}%;" class="absolute -translate-x-1/2 -translate-y-1/2 px-3 py-2 rounded-xl border-2 text-xs sm:text-sm font-bold transition select-none ${cls}">${escapeHtml(c.word)}</button>`;
     }).join('');
     canvas.innerHTML=`
     <span class="text-xs font-extrabold text-indigo-600 uppercase tracking-widest mb-2 block">🔗 유의어를 모두 골라보세요</span>
@@ -1225,20 +1219,20 @@ function renderSynonymCanvas(item){
         ${checked?'':`<button onclick="checkSynonymAnswer()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-6 py-2.5 rounded-xl text-sm transition">확인</button>`}
     </div>`;
 }
-function toggleSynonymPick(id){
+function toggleSynonymPick(idx){
     const item=studyList[studyIndex];if(!item||item._synChecked)return;
-    if(item._synSelected.has(id))item._synSelected.delete(id);
-    else item._synSelected.add(id);
+    if(item._synSelected.has(idx))item._synSelected.delete(idx);
+    else item._synSelected.add(idx);
     renderSynonymCanvas(item);
 }
 function checkSynonymAnswer(){
     const item=studyList[studyIndex];if(!item||item._synChecked)return;
     item._synChecked=true;
-    const correctIds=new Set(item._synCandidates.filter(c=>c.correct).map(c=>c.id));
+    const correctIdxs=new Set(item._synCandidates.map((c,i)=>c.correct?i:null).filter(i=>i!==null));
     const selected=item._synSelected;
-    const allCorrectPicked=[...correctIds].every(id=>selected.has(id));
-    const noWrongPicked=[...selected].every(id=>correctIds.has(id));
-    const perfect=allCorrectPicked&&noWrongPicked&&correctIds.size>0;
+    const allCorrectPicked=[...correctIdxs].every(i=>selected.has(i));
+    const noWrongPicked=[...selected].every(i=>correctIdxs.has(i));
+    const perfect=allCorrectPicked&&noWrongPicked&&correctIdxs.size>0;
     if(!perfect)addWrongWord(item);
     renderSynonymCanvas(item);
     const fb=document.getElementById('synonymFeedback');
