@@ -295,7 +295,13 @@
                         <h3 class="font-extrabold text-slate-700 flex items-center gap-2"><i class="fa-solid fa-rotate text-amber-500"></i> 오늘의 복습 추천</h3>
                         <button onclick="openReviewStudyModal()" class="bg-gradient-to-r from-amber-500 to-rose-500 text-white px-3 py-1.5 rounded-lg text-xs font-extrabold shadow flex items-center gap-1.5"><i class="fa-solid fa-gamepad"></i> 복습 시작</button>
                     </div>
-                    <p class="text-xs text-slate-500 mb-3">아직 암기하지 못했거나, 암기한 지 3일이 지난 단어를 우선 추천합니다.</p>
+                    <div class="flex flex-wrap gap-1.5 mb-2">
+                        <button onclick="setReviewFilter('smart')" data-filter="smart" class="review-filter-btn text-xs font-bold px-3 py-1.5 rounded-lg transition whitespace-nowrap">🎯 종합 추천</button>
+                        <button onclick="setReviewFilter('unmemorized')" data-filter="unmemorized" class="review-filter-btn text-xs font-bold px-3 py-1.5 rounded-lg transition whitespace-nowrap">📖 미암기 단어</button>
+                        <button onclick="setReviewFilter('stale')" data-filter="stale" class="review-filter-btn text-xs font-bold px-3 py-1.5 rounded-lg transition whitespace-nowrap">⏳ 오래된 복습</button>
+                        <button onclick="setReviewFilter('mistakes')" data-filter="mistakes" class="review-filter-btn text-xs font-bold px-3 py-1.5 rounded-lg transition whitespace-nowrap">❌ 자주 틀린 단어</button>
+                    </div>
+                    <p id="reviewFilterDesc" class="text-xs text-slate-500 mb-3"></p>
                     <div id="reviewWordList" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5"></div>
                 </div>
             </div>
@@ -376,7 +382,13 @@ let sortMode='newest', isBlurMode=false, isHideMemorized=false, isHideExtra=fals
 let editingWordId=null, currentActiveWord='';
 let collapsedFolders=new Set(), movingWordId=null;
 let currentView='words';
-let reviewWordsCache=[];
+let reviewWordsCache=[], reviewFilter='smart';
+const REVIEW_FILTER_DESC={
+    smart:'암기 여부, 복습 경과일, 오답 횟수를 종합해 우선순위가 높은 단어를 추천합니다.',
+    unmemorized:'아직 암기하지 못한 단어를 오래 방치된 순서로 보여줍니다.',
+    stale:'이미 암기했지만 3일 이상 복습하지 않은 단어입니다.',
+    mistakes:'학습 센터에서 오답을 낸 횟수가 많은 순서로 보여줍니다.'
+};
 
 function getGeminiKey(){ return localStorage.getItem('gemini_api_key')||''; }
 function setGeminiKey(){
@@ -409,44 +421,74 @@ function normalizeWord(w,tree){
     if(w.folder&&!w.folderId){const t=tree.find(f=>f.name===w.folder);w.folderId=t?t.id:tree[0]?.id;delete w.folder;}
     if(w.memorized===undefined)w.memorized=false;
     if(w.lastReviewed===undefined)w.lastReviewed=0;
+    if(w.wrongCount===undefined)w.wrongCount=0;
     return w;
 }
 
 // ── 오늘의 복습 추천 ──
-function getTodayReviewWords(limit){
-    limit=limit||30;
+function getTodayReviewWords(limit,filter){
+    limit=limit||30;filter=filter||'smart';
     const now=Date.now(), DAY=86400000;
+    if(filter==='unmemorized'){
+        return words.filter(w=>!w.memorized).sort((a,b)=>(a.lastReviewed||0)-(b.lastReviewed||0)).slice(0,limit);
+    }
+    if(filter==='stale'){
+        return words.filter(w=>w.memorized&&(now-(w.lastReviewed||0))>=3*DAY)
+            .sort((a,b)=>(a.lastReviewed||0)-(b.lastReviewed||0)).slice(0,limit);
+    }
+    if(filter==='mistakes'){
+        return words.filter(w=>(w.wrongCount||0)>0).sort((a,b)=>(b.wrongCount||0)-(a.wrongCount||0)).slice(0,limit);
+    }
+    // smart: 암기여부 + 오답횟수 + 복습 경과일을 종합한 우선순위 점수
     const scored=words.map(w=>{
-        const last=w.lastReviewed||0;
-        const due=w.memorized?(now-last)>=3*DAY:true;
-        return {w,due,last,mem:w.memorized};
+        const last=w.lastReviewed||0, wrongCount=w.wrongCount||0;
+        const daysSince=(now-last)/DAY;
+        let due=false, score=0;
+        if(!w.memorized){ due=true; score=1000+wrongCount*30+Math.min(daysSince,30); }
+        else if(wrongCount>0){ due=true; score=500+wrongCount*30+Math.min(daysSince,30); }
+        else if(daysSince>=3){ due=true; score=100+Math.min(daysSince,60); }
+        return {w,due,score};
     }).filter(x=>x.due);
-    scored.sort((a,b)=>{ if(a.mem!==b.mem)return a.mem?1:-1; return a.last-b.last; });
+    scored.sort((a,b)=>b.score-a.score);
     return scored.slice(0,limit).map(x=>x.w);
 }
 function markReviewed(wordId){ const t=words.find(w=>w.id===wordId); if(t)t.lastReviewed=Date.now(); }
 function updateReviewBadge(){
     const badge=document.getElementById('reviewCountBadge'); if(!badge)return;
-    const count=getTodayReviewWords(9999).length;
+    const count=getTodayReviewWords(9999,'smart').length;
     if(count>0){badge.textContent=count>99?'99+':count;badge.classList.remove('hidden');}
     else badge.classList.add('hidden');
 }
+function setReviewFilter(f){ reviewFilter=f; renderReviewView(); }
 function renderReviewView(){
-    reviewWordsCache=getTodayReviewWords(30);
+    reviewWordsCache=getTodayReviewWords(30,reviewFilter);
     updateReviewBadge();
+    document.querySelectorAll('.review-filter-btn').forEach(b=>{
+        const active=b.dataset.filter===reviewFilter;
+        b.className=`review-filter-btn text-xs font-bold px-3 py-1.5 rounded-lg transition whitespace-nowrap ${active?'bg-indigo-600 text-white':'bg-slate-100 text-slate-600 hover:bg-slate-200'}`;
+    });
+    const descEl=document.getElementById('reviewFilterDesc');
+    if(descEl)descEl.textContent=REVIEW_FILTER_DESC[reviewFilter]||'';
     const container=document.getElementById('reviewWordList'); if(!container)return;
     if(reviewWordsCache.length===0){
-        container.innerHTML=`<div class="col-span-full py-10 text-center text-slate-400 text-sm">오늘 복습할 단어가 없습니다. 잘하고 계세요! 🎉</div>`;
+        container.innerHTML=`<div class="col-span-full py-10 text-center text-slate-400 text-sm">해당 조건의 복습 단어가 없습니다. 잘하고 계세요! 🎉</div>`;
         return;
     }
+    const now=Date.now(), DAY=86400000;
     container.innerHTML=reviewWordsCache.map(w=>{
         const f=folderTree.find(x=>x.id===w.folderId);
         const fp=f?.parentId?folderTree.find(x=>x.id===f.parentId):null;
         const loc=fp?`${fp.name} > ${f?.name}`:(f?.name||'');
+        const days=w.lastReviewed?Math.floor((now-w.lastReviewed)/DAY):null;
+        const extraBadges=[
+            w.memorized?'<span class="text-[9px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full font-bold shrink-0">암기완료</span>':'<span class="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-bold shrink-0">미암기</span>',
+            (w.wrongCount||0)>0?`<span class="text-[9px] bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded-full font-bold shrink-0">오답 ${w.wrongCount}회</span>`:'',
+            (days!==null&&days>=1)?`<span class="text-[9px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded-full font-bold shrink-0">${days}일 전 복습</span>`:''
+        ].filter(Boolean).join('');
         return `<div class="bg-slate-50 border border-slate-200 rounded-xl p-3">
-            <div class="flex items-center justify-between gap-2 mb-1">
+            <div class="flex items-center justify-between gap-2 mb-1 flex-wrap">
                 <span class="font-extrabold text-slate-900 truncate">${escapeHtml(w.word)}</span>
-                ${w.memorized?'<span class="text-[9px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full font-bold shrink-0">복습</span>':'<span class="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-bold shrink-0">미암기</span>'}
+                <div class="flex items-center gap-1 flex-wrap">${extraBadges}</div>
             </div>
             <div class="text-xs text-slate-600 truncate">${escapeHtml(w.meanings.join(' / '))}</div>
             <div class="text-[10px] text-slate-400 mt-1 truncate"><i class="fa-solid fa-folder text-[9px] mr-1"></i>${escapeHtml(loc)}</div>
@@ -798,7 +840,7 @@ function saveActiveWord(){
     const eArr=[];if(document.getElementById('useExCheck')?.checked)document.querySelectorAll('#exGroup .ex-inp').forEach(i=>{if(i.value.trim())eArr.push(i.value.trim());});
     const extra=document.getElementById('extraFormsInp')?.value.trim()||'';
     if(editingWordId){const t=words.find(w=>w.id===editingWordId);if(t){t.meanings=mArr;t.synonyms=sArr;t.examples=eArr;t.extraForms=extra;}}
-    else words.unshift({id:Date.now(),folderId:activeFolderId,word:currentActiveWord,meanings:mArr,synonyms:sArr,extraForms:extra,examples:eArr,memorized:false,lastReviewed:0});
+    else words.unshift({id:Date.now(),folderId:activeFolderId,word:currentActiveWord,meanings:mArr,synonyms:sArr,extraForms:extra,examples:eArr,memorized:false,lastReviewed:0,wrongCount:0});
     editingWordId=null;saveData();renderWords();
     document.getElementById('searchInput').value='';
     document.getElementById('searchResultArea').innerHTML='';
@@ -994,7 +1036,11 @@ function studyNext(){
     }
 }
 
-function addWrongWord(item){if(!wrongWords.some(w=>w.id===item.id))wrongWords.push(item);}
+function addWrongWord(item){
+    if(!wrongWords.some(w=>w.id===item.id))wrongWords.push(item);
+    const t=words.find(w=>w.id===item.id);
+    if(t)t.wrongCount=(t.wrongCount||0)+1;
+}
 
 function renderStudyMemBtn(){
     const item=studyList[studyIndex];const b=document.getElementById('studyMemBtn');if(!item||!b)return;
@@ -1327,7 +1373,7 @@ function normalizeBulkWord(raw,folderId,idx){
     if(!Array.isArray(examples))examples=[];
     examples=examples.map(ex=>String(ex));
     const extraForms=typeof raw.extraForms==='string'?raw.extraForms:'';
-    return{id:Date.now()+idx,folderId,word:raw.word.trim(),meanings,synonyms,extraForms,examples,memorized:false,lastReviewed:0};
+    return{id:Date.now()+idx,folderId,word:raw.word.trim(),meanings,synonyms,extraForms,examples,memorized:false,lastReviewed:0,wrongCount:0};
 }
 function confirmBulkAdd(){
     const folderId=document.getElementById('bulkAddFolderSelect').value;
