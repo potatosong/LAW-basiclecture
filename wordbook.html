@@ -333,6 +333,7 @@
             <button onclick="setStudyMode('spelling')" id="tab_spelling" class="px-2.5 py-1.5 rounded-lg study-tab text-slate-400 hover:text-white whitespace-nowrap">✍️ 철자입력</button>
             <button onclick="setStudyMode('choice')" id="tab_choice" class="px-2.5 py-1.5 rounded-lg study-tab text-slate-400 hover:text-white whitespace-nowrap">🔢 객관식</button>
             <button onclick="setStudyMode('blank')" id="tab_blank" class="px-2.5 py-1.5 rounded-lg study-tab text-slate-400 hover:text-white whitespace-nowrap">🕳️ 예문빈칸</button>
+            <button onclick="setStudyMode('synonym')" id="tab_synonym" class="px-2.5 py-1.5 rounded-lg study-tab text-slate-400 hover:text-white whitespace-nowrap">🔗 유의어</button>
         </div>
         <button onclick="closeStudyModal()" class="bg-slate-800 hover:bg-rose-600 w-9 h-9 rounded-full flex items-center justify-center transition shrink-0"><i class="fa-solid fa-xmark"></i></button>
     </div>
@@ -928,8 +929,7 @@ let tapPool=[], tapAnswer=[], tapCurrentIndex=-1;
 let matchCards=[], matchFlipped=[], matchAttempts=0, matchTimerInterval=null, matchLocked=false;
 let matchAllWords=[], matchCompletedIds=new Set(), matchCarryOverIds=[], matchIntroducedIds=new Set();
 let matchRound=1, matchRoundPairTotal=0, matchRoundMatchedCount=0, matchCurrentRoundWords=[], matchTimeLeft=0, matchGameToken=0;
-let simonCards=[], simonSequence=[], simonUserStep=0, simonRound=0, simonPlaying=true, simonActiveIndex=-1, simonGameToken=0, simonAlive=true;
-let bombRunning=false, bombLives=3, bombScore=0, bombCurrentTarget=null, bombFallTimer=null, bombDifficultyMs=6000, bombGameToken=0;
+let speedRunning=false, speedScore=0, speedCombo=0, speedBestCombo=0, speedTimeLeft=45, speedCurrentTarget=null, speedTimerInterval=null, speedGameToken=0;
 const FALLBACK_WORDS=['apple','banana','computer','freedom','journey','elephant','bicycle','mountain','holiday','kitchen','umbrella','pencil','garden','picture','airport'];
 
 let baseStudyList=[];// 원본 단어 목록 (모드 전환 시 재확장용)
@@ -955,8 +955,33 @@ function expandForMode(list, mode, direction){
             });
         });
         return expanded;
+    } else if(mode==='synonym'){
+        const groups=buildSynonymGroups(list);
+        return list.filter(w=>groups[w.id]&&groups[w.id].length>0).map(w=>({...w,_synonymPartnerIds:groups[w.id]}));
     }
     return list;
+}
+
+// 뜻/유의어 텍스트가 겹치는 다른 단어를 서로의 "유의어 단어"로 묶는다
+function buildSynonymGroups(list){
+    const tokenIndex={};
+    list.forEach(w=>{
+        const tokens=new Set([...(w.meanings||[]),...(w.synonyms||[])].map(s=>(s||'').trim()).filter(Boolean));
+        w._synTokens=tokens;
+    });
+    list.forEach(w=>{
+        w._synTokens.forEach(t=>{
+            if(!tokenIndex[t])tokenIndex[t]=new Set();
+            tokenIndex[t].add(w.id);
+        });
+    });
+    const groups={};
+    list.forEach(w=>{
+        const partnerIds=new Set();
+        w._synTokens.forEach(t=>{ tokenIndex[t].forEach(id=>{ if(id!==w.id)partnerIds.add(id); }); });
+        groups[w.id]=[...partnerIds];
+    });
+    return groups;
 }
 
 function openStudyModal(customList){
@@ -990,6 +1015,10 @@ function setStudyMode(mode){
     studyList=expandForMode(baseStudyList,mode,choiceDirection);
     if(isShuffleOn)shuffleArray(studyList);
     studyIndex=0;
+    if(mode==='synonym'&&studyList.length===0){
+        document.getElementById('studyCanvas').innerHTML=`<div class="text-center"><i class="fa-solid fa-circle-info text-4xl text-indigo-400 mb-3"></i><p class="text-base font-bold text-slate-800">유의어로 연결된 단어가 아직 없어요.</p><p class="text-slate-500 text-sm mt-2 max-w-sm mx-auto">같은 뜻이나 유의어 텍스트를 공유하는 단어를 2개 이상 등록하면<br>여기서 유의어 찾기를 할 수 있어요.</p></div>`;
+        return;
+    }
     renderStudyCanvas();
 }
 function toggleShuffleMode(){
@@ -1136,7 +1165,85 @@ ${item.examples[0]?`<div class="mt-4 pt-4 border-t border-slate-100 w-full max-w
 <div class="flex gap-2 max-w-sm w-full"><input type="text" id="blankInp" placeholder="정답 입력" onkeydown="if(event.key==='Enter')checkBlank()" class="flex-1 bg-white border border-slate-300 rounded-2xl px-4 py-3 text-center text-lg font-bold text-slate-900 focus:outline-none focus:border-teal-600" autocomplete="off"><button onclick="checkBlank()" class="bg-teal-600 hover:bg-teal-700 text-white font-bold px-5 py-3 rounded-2xl text-sm transition">확인</button></div>
 <div id="blankFb" class="mt-4 min-h-[28px] text-sm font-extrabold"></div>`;
         setTimeout(()=>document.getElementById('blankInp')?.focus(),50);
+    } else if(studyMode==='synonym'){
+        if(!item._synCandidates){
+            const partnerIds=new Set(item._synonymPartnerIds);
+            const partners=baseStudyList.filter(w=>partnerIds.has(w.id));
+            const distractorPool=baseStudyList.filter(w=>w.id!==item.id&&!partnerIds.has(w.id));
+            shuffleArray(distractorPool);
+            const distractorCount=Math.max(2,Math.min(6,8-partners.length,distractorPool.length));
+            const distractors=distractorPool.slice(0,distractorCount);
+            let candidates=[...partners.map(w=>({id:w.id,word:w.word,correct:true})),...distractors.map(w=>({id:w.id,word:w.word,correct:false}))];
+            shuffleArray(candidates);
+            item._synCandidates=candidates;
+            item._synSelected=new Set();
+            item._synChecked=false;
+            item._synPositions=scatterPositions(candidates.length);
+        }
+        renderSynonymCanvas(item);
     }
+}
+function scatterPositions(n){
+    const positions=[];
+    for(let i=0;i<n;i++){
+        const angle=(360/n)*i+(Math.random()*20-10);
+        const radius=30+Math.random()*16;
+        const rad=angle*Math.PI/180;
+        let left=50+radius*Math.cos(rad);
+        let top=50+radius*Math.sin(rad)*0.85;
+        left=Math.max(10,Math.min(90,left));
+        top=Math.max(10,Math.min(90,top));
+        positions.push({left,top});
+    }
+    return positions;
+}
+function renderSynonymCanvas(item){
+    const canvas=document.getElementById('studyCanvas');if(!canvas)return;
+    const candidates=item._synCandidates, positions=item._synPositions;
+    const checked=item._synChecked, selected=item._synSelected;
+    const bubbles=candidates.map((c,i)=>{
+        const pos=positions[i], isSel=selected.has(c.id);
+        let cls='bg-white border-slate-300 text-slate-700 hover:border-indigo-400';
+        if(checked){
+            if(c.correct&&isSel)cls='bg-emerald-100 border-emerald-500 text-emerald-800';
+            else if(c.correct&&!isSel)cls='bg-amber-50 border-amber-400 text-amber-700 border-dashed';
+            else if(!c.correct&&isSel)cls='bg-rose-100 border-rose-500 text-rose-700';
+            else cls='bg-slate-50 border-slate-200 text-slate-400';
+        } else if(isSel){
+            cls='bg-indigo-100 border-indigo-500 text-indigo-800';
+        }
+        return `<button ${checked?'disabled':''} onclick="toggleSynonymPick(${c.id})" style="left:${pos.left}%;top:${pos.top}%;" class="absolute -translate-x-1/2 -translate-y-1/2 px-3 py-2 rounded-xl border-2 text-xs sm:text-sm font-bold transition select-none ${cls}">${escapeHtml(c.word)}</button>`;
+    }).join('');
+    canvas.innerHTML=`
+    <span class="text-xs font-extrabold text-indigo-600 uppercase tracking-widest mb-2 block">🔗 유의어를 모두 골라보세요</span>
+    <div class="relative w-full h-64 sm:h-72">
+        <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-indigo-600 text-white font-black text-lg sm:text-2xl px-5 py-3 rounded-2xl shadow-lg z-10">${escapeHtml(item.word)}</div>
+        ${bubbles}
+    </div>
+    <div class="mt-4 flex flex-col items-center gap-2">
+        <div id="synonymFeedback" class="text-sm font-extrabold min-h-[24px]"></div>
+        ${checked?'':`<button onclick="checkSynonymAnswer()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-6 py-2.5 rounded-xl text-sm transition">확인</button>`}
+    </div>`;
+}
+function toggleSynonymPick(id){
+    const item=studyList[studyIndex];if(!item||item._synChecked)return;
+    if(item._synSelected.has(id))item._synSelected.delete(id);
+    else item._synSelected.add(id);
+    renderSynonymCanvas(item);
+}
+function checkSynonymAnswer(){
+    const item=studyList[studyIndex];if(!item||item._synChecked)return;
+    item._synChecked=true;
+    const correctIds=new Set(item._synCandidates.filter(c=>c.correct).map(c=>c.id));
+    const selected=item._synSelected;
+    const allCorrectPicked=[...correctIds].every(id=>selected.has(id));
+    const noWrongPicked=[...selected].every(id=>correctIds.has(id));
+    const perfect=allCorrectPicked&&noWrongPicked&&correctIds.size>0;
+    if(!perfect)addWrongWord(item);
+    renderSynonymCanvas(item);
+    const fb=document.getElementById('synonymFeedback');
+    if(fb)fb.innerHTML=perfect?`<span class="text-emerald-600"><i class="fa-solid fa-circle-check"></i> 정답!</span>`:`<span class="text-rose-600">아쉬워요 — 초록/점선 표시가 정답이에요</span>`;
+    studyNextTimer=setTimeout(()=>{if(!document.getElementById('studyModal').classList.contains('hidden'))studyNext();},1800);
 }
 
 function checkSpell(){
@@ -1238,8 +1345,7 @@ function selectChoice(idx,el){
 let gameWordPool=[], activeGameId=null, activeGameSession=0;
 const GAME_LIST=[
     {id:'match',icon:'🧩',name:'짝맞추기',desc:'제한시간 안에 카드를 뒤집어 단어-뜻 짝을 맞춰보세요. 못다 맞춘 단어는 다음 라운드에 다시 나와요.',color:'from-indigo-500 to-purple-500',start:startMatchGame},
-    {id:'simon',icon:'🧠',name:'단어 사이먼',desc:'점점 길어지는 단어 순서를 기억해서 그대로 따라 눌러보세요.',color:'from-emerald-500 to-teal-500',start:startSimonGame},
-    {id:'bomb',icon:'💣',name:'단어 폭탄',desc:'떨어지는 블록 중 뜻에 맞는 단어를 제한시간 안에 터치하세요.',color:'from-rose-500 to-orange-500',start:startBombGame}
+    {id:'speed',icon:'⚡',name:'스피드 매치',desc:'제한시간 안에 최대한 빠르게 정답을 맞혀 콤보 점수를 쌓아보세요!',color:'from-amber-500 to-rose-500',start:startSpeedGame}
 ];
 function openGameCenterModal(){
     gameWordPool=getWordsForFolder();
@@ -1250,7 +1356,7 @@ function openGameCenterModal(){
 }
 function closeGameCenterModal(){
     activeGameSession++;
-    clearInterval(matchTimerInterval);clearTimeout(bombFallTimer);
+    clearInterval(matchTimerInterval);clearInterval(speedTimerInterval);
     document.getElementById('gameCenterModal').classList.add('hidden');
     window.removeEventListener('keydown',handleGameCenterKeys);
     saveData();renderWords();
@@ -1264,7 +1370,7 @@ function handleGameCenterKeys(e){
 }
 function renderGameSelection(){
     activeGameId=null;activeGameSession++;
-    clearInterval(matchTimerInterval);clearTimeout(bombFallTimer);
+    clearInterval(matchTimerInterval);clearInterval(speedTimerInterval);
     document.getElementById('gameCenterBackBtn').classList.add('hidden');
     document.getElementById('gameCenterTitle').innerHTML=`<i class="fa-solid fa-dice text-rose-400"></i> 게임 센터`;
     document.getElementById('gameCenterCanvas').innerHTML=`<div class="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-2xl">
@@ -1286,6 +1392,60 @@ function startGame(id){
     g.start(activeGameSession);
 }
 function backToGameSelection(){ renderGameSelection(); }
+
+// ── 게임 이펙트(사운드 · 이펙트) ──
+let audioCtx=null;
+function getAudioCtx(){
+    if(!audioCtx){try{audioCtx=new (window.AudioContext||window.webkitAudioContext)();}catch(e){return null;}}
+    if(audioCtx.state==='suspended')audioCtx.resume();
+    return audioCtx;
+}
+function playTone(freq,duration,type,startTime,gainPeak){
+    const ctx=getAudioCtx();if(!ctx)return;
+    const osc=ctx.createOscillator(),gain=ctx.createGain();
+    osc.type=type||'sine';osc.frequency.value=freq;
+    osc.connect(gain);gain.connect(ctx.destination);
+    const t=ctx.currentTime+(startTime||0);
+    gain.gain.setValueAtTime(0,t);
+    gain.gain.linearRampToValueAtTime(gainPeak||0.2,t+0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001,t+duration);
+    osc.start(t);osc.stop(t+duration+0.02);
+}
+function playCorrectSound(){playTone(523.25,0.12,'triangle',0,0.18);playTone(659.25,0.12,'triangle',0.08,0.18);playTone(783.99,0.18,'triangle',0.16,0.2);}
+function playWrongSound(){playTone(160,0.25,'sawtooth',0,0.15);playTone(110,0.3,'sawtooth',0.08,0.15);}
+function playFanfareSound(){[523.25,659.25,783.99,1046.5].forEach((f,i)=>playTone(f,0.22,'triangle',i*0.12,0.22));}
+function burstConfetti(container){
+    if(!container)return;
+    const colors=['#6366f1','#f59e0b','#10b981','#ec4899','#3b82f6'];
+    for(let i=0;i<24;i++){
+        const el=document.createElement('div');
+        const size=6+Math.random()*6;
+        el.style.cssText=`position:absolute;left:50%;top:40%;width:${size}px;height:${size}px;background:${colors[i%colors.length]};border-radius:${Math.random()<0.5?'50%':'2px'};pointer-events:none;z-index:30;`;
+        const angle=Math.random()*Math.PI*2,dist=60+Math.random()*90;
+        const dx=Math.cos(angle)*dist,dy=Math.sin(angle)*dist-40;
+        container.appendChild(el);
+        el.animate([
+            {transform:'translate(-50%,-50%) scale(1)',opacity:1},
+            {transform:`translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) rotate(${Math.random()*360}deg) scale(0.4)`,opacity:0}
+        ],{duration:700+Math.random()*400,easing:'cubic-bezier(.22,.68,.32,.99)'});
+        setTimeout(()=>el.remove(),1200);
+    }
+}
+function shakeElement(el){
+    if(!el)return;
+    el.animate([{transform:'translateX(0)'},{transform:'translateX(-8px)'},{transform:'translateX(8px)'},{transform:'translateX(-6px)'},{transform:'translateX(6px)'},{transform:'translateX(0)'}],{duration:350,easing:'ease-in-out'});
+}
+function popFloatingText(anchorEl,text,color){
+    const parent=anchorEl.closest('.relative')||anchorEl.parentElement;
+    if(!parent)return;
+    const parentRect=parent.getBoundingClientRect(),rect=anchorEl.getBoundingClientRect();
+    const el=document.createElement('div');
+    el.textContent=text;
+    el.style.cssText=`position:absolute;left:${rect.left-parentRect.left+rect.width/2}px;top:${rect.top-parentRect.top}px;transform:translate(-50%,0);color:${color||'#f59e0b'};font-weight:900;font-size:20px;pointer-events:none;z-index:30;`;
+    parent.appendChild(el);
+    el.animate([{transform:'translate(-50%,0)',opacity:1},{transform:'translate(-50%,-40px)',opacity:0}],{duration:700,easing:'ease-out'});
+    setTimeout(()=>el.remove(),750);
+}
 
 // ── 짝 맞추기 게임 (제한시간 · 이월 라운드) ──
 function startMatchGame(session){
@@ -1375,12 +1535,16 @@ function flipMatchCard(uid){
             doSpeak(wordCard.text);
             matchFlipped=[];matchLocked=false;
             renderMatchGame();
+            playCorrectSound();
+            burstConfetti(document.getElementById('gameCenterCanvas'));
             if(matchRoundMatchedCount===matchRoundPairTotal){
                 clearInterval(matchTimerInterval);
                 if(matchCompletedIds.size===matchAllWords.length)setTimeout(()=>showMatchComplete(),400);
                 else setTimeout(()=>showMatchRoundCleared(),400);
             }
         } else {
+            playWrongSound();
+            shakeElement(document.getElementById('gameCenterCanvas'));
             setTimeout(()=>{
                 if(matchGameToken!==activeGameSession||matchRound!==roundAtFlip)return;
                 matchFlipped=[];matchLocked=false;renderMatchGame();
@@ -1390,167 +1554,111 @@ function flipMatchCard(uid){
 }
 function showMatchRoundCleared(){
     if(matchGameToken!==activeGameSession)return;
-    document.getElementById('gameCenterCanvas').innerHTML=`<div class="text-center"><i class="fa-solid fa-star text-4xl text-amber-400 mb-3"></i><p class="text-lg font-black text-slate-800">라운드 ${matchRound} 클리어! 🎉</p></div>`;
+    const canvas=document.getElementById('gameCenterCanvas');
+    canvas.innerHTML=`<div class="text-center relative"><i class="fa-solid fa-star text-4xl text-amber-400 mb-3"></i><p class="text-lg font-black text-slate-800">라운드 ${matchRound} 클리어! 🎉</p></div>`;
+    playFanfareSound();burstConfetti(canvas);
     setTimeout(()=>{if(matchGameToken!==activeGameSession)return;matchRound++;startMatchRound();},1200);
 }
 function handleMatchRoundTimeUp(){
     if(matchGameToken!==activeGameSession)return;
     matchLocked=true;
     matchCarryOverIds=[...new Set(matchCurrentRoundWords.filter(w=>!matchCompletedIds.has(w.id)).map(w=>w.id))];
-    document.getElementById('gameCenterCanvas').innerHTML=`<div class="text-center"><i class="fa-solid fa-hourglass-end text-4xl text-amber-500 mb-3"></i><p class="text-lg font-black text-slate-800">시간 종료!</p><p class="text-slate-500 mt-2 text-sm">못다 맞춘 ${matchCarryOverIds.length}개 단어는 다음 라운드에 다시 나와요.</p></div>`;
+    const canvas=document.getElementById('gameCenterCanvas');
+    canvas.innerHTML=`<div class="text-center"><i class="fa-solid fa-hourglass-end text-4xl text-amber-500 mb-3"></i><p class="text-lg font-black text-slate-800">시간 종료!</p><p class="text-slate-500 mt-2 text-sm">못다 맞춘 ${matchCarryOverIds.length}개 단어는 다음 라운드에 다시 나와요.</p></div>`;
+    playWrongSound();shakeElement(canvas);
     setTimeout(()=>{if(matchGameToken!==activeGameSession)return;matchRound++;startMatchRound();},1800);
 }
 function showMatchComplete(){
     if(matchGameToken!==activeGameSession)return;
-    document.getElementById('gameCenterCanvas').innerHTML=`<div class="text-center"><i class="fa-solid fa-trophy text-5xl text-amber-400 mb-4"></i><p class="text-2xl font-black text-slate-800">전체 단어 짝맞추기 완료! 🎉</p><p class="text-slate-500 mt-2 text-sm">총 ${matchRound}라운드 · ${matchAllWords.length}개 단어 · 시도 ${matchAttempts}회</p><button onclick="startGame('match')" class="mt-5 bg-indigo-600 text-white px-6 py-2.5 rounded-xl font-bold text-sm">다시 하기</button></div>`;
+    const canvas=document.getElementById('gameCenterCanvas');
+    canvas.innerHTML=`<div class="text-center relative"><i class="fa-solid fa-trophy text-5xl text-amber-400 mb-4"></i><p class="text-2xl font-black text-slate-800">전체 단어 짝맞추기 완료! 🎉</p><p class="text-slate-500 mt-2 text-sm">총 ${matchRound}라운드 · ${matchAllWords.length}개 단어 · 시도 ${matchAttempts}회</p><button onclick="startGame('match')" class="mt-5 bg-indigo-600 text-white px-6 py-2.5 rounded-xl font-bold text-sm">다시 하기</button></div>`;
+    playFanfareSound();burstConfetti(canvas);setTimeout(()=>burstConfetti(canvas),300);
 }
 
-// ── 단어 사이먼 게임 ──
-function startSimonGame(session){
-    simonGameToken=session;
-    if(gameWordPool.length<3){
-        document.getElementById('gameCenterCanvas').innerHTML=`<div class="text-center"><i class="fa-solid fa-circle-exclamation text-4xl text-amber-500 mb-3"></i><p class="text-base font-bold text-slate-800">단어 사이먼을 하려면 단어가 3개 이상 필요합니다.</p></div>`;
-        return;
-    }
-    const pool=[...gameWordPool];shuffleArray(pool);
-    simonCards=pool.slice(0,Math.min(9,pool.length));
-    simonSequence=[];simonRound=0;simonUserStep=0;simonActiveIndex=-1;simonAlive=true;
-    nextSimonRound();
-}
-function nextSimonRound(){
-    if(simonGameToken!==activeGameSession)return;
-    simonRound++;
-    simonSequence.push(Math.floor(Math.random()*simonCards.length));
-    simonUserStep=0;
-    playSimonSequence();
-}
-function renderSimonGame(){
-    if(simonGameToken!==activeGameSession)return;
-    const canvas=document.getElementById('gameCenterCanvas');if(!canvas)return;
-    const cols=simonCards.length<=4?'grid-cols-2':'grid-cols-3';
-    const status=simonPlaying?'👀 순서를 잘 보고 기억하세요':'👉 순서대로 눌러보세요';
-    const cardsHtml=simonCards.map((w,i)=>{
-        const active=i===simonActiveIndex;
-        return `<button onclick="handleSimonTap(${i})" ${simonPlaying?'disabled':''} class="aspect-square rounded-2xl flex items-center justify-center text-center p-2 text-sm sm:text-base font-black transition select-none break-words border-2 ${active?'bg-amber-400 border-amber-500 text-white scale-95':'bg-white border-slate-200 text-slate-700 hover:border-indigo-300'} ${simonPlaying?'cursor-default':'cursor-pointer'}">${escapeHtml(w.word)}</button>`;
-    }).join('');
-    canvas.innerHTML=`
-    <div class="w-full max-w-md">
-        <div class="flex items-center justify-between mb-3 text-xs sm:text-sm font-bold text-slate-500">
-            <span>라운드 ${simonRound}</span>
-            <span>${status}</span>
-        </div>
-        <div class="grid ${cols} gap-2.5 sm:gap-3">${cardsHtml}</div>
-    </div>`;
-}
-function playSimonSequence(){
-    if(simonGameToken!==activeGameSession)return;
-    simonPlaying=true;simonActiveIndex=-1;
-    renderSimonGame();
-    let i=0;
-    const mySession=simonGameToken;
-    function step(){
-        if(mySession!==activeGameSession)return;
-        if(i>=simonSequence.length){simonPlaying=false;simonActiveIndex=-1;renderSimonGame();return;}
-        simonActiveIndex=simonSequence[i];
-        renderSimonGame();
-        doSpeak(simonCards[simonActiveIndex].word);
-        setTimeout(()=>{
-            if(mySession!==activeGameSession)return;
-            simonActiveIndex=-1;renderSimonGame();
-            setTimeout(()=>{if(mySession!==activeGameSession)return;i++;step();},250);
-        },600);
-    }
-    setTimeout(step,500);
-}
-function handleSimonTap(idx){
-    if(simonPlaying||simonGameToken!==activeGameSession||!simonAlive)return;
-    simonActiveIndex=idx;renderSimonGame();
-    setTimeout(()=>{if(simonGameToken!==activeGameSession||!simonAlive)return;simonActiveIndex=-1;if(!simonPlaying)renderSimonGame();},200);
-    if(simonSequence[simonUserStep]===idx){
-        doSpeak(simonCards[idx].word);
-        simonUserStep++;
-        if(simonUserStep===simonSequence.length){
-            simonPlaying=true;
-            setTimeout(()=>{if(simonGameToken!==activeGameSession)return;nextSimonRound();},700);
-        }
-    } else {
-        simonAlive=false;
-        showSimonGameOver();
-    }
-}
-function showSimonGameOver(){
-    if(simonGameToken!==activeGameSession)return;
-    document.getElementById('gameCenterCanvas').innerHTML=`<div class="text-center"><i class="fa-solid fa-skull text-5xl text-slate-400 mb-4"></i><p class="text-2xl font-black text-slate-800">게임 오버</p><p class="text-slate-500 mt-2 text-sm">최고 라운드: ${simonRound-1}</p><button onclick="startGame('simon')" class="mt-5 bg-emerald-600 text-white px-6 py-2.5 rounded-xl font-bold text-sm">다시 하기</button></div>`;
-}
-
-// ── 단어 폭탄 게임 ──
-function startBombGame(session){
-    bombGameToken=session;
+// ── 스피드 매치 게임 ──
+function startSpeedGame(session){
+    speedGameToken=session;
     if(gameWordPool.length<4){
-        document.getElementById('gameCenterCanvas').innerHTML=`<div class="text-center"><i class="fa-solid fa-circle-exclamation text-4xl text-amber-500 mb-3"></i><p class="text-base font-bold text-slate-800">단어 폭탄 게임을 하려면 단어가 4개 이상 필요합니다.</p></div>`;
+        document.getElementById('gameCenterCanvas').innerHTML=`<div class="text-center"><i class="fa-solid fa-circle-exclamation text-4xl text-amber-500 mb-3"></i><p class="text-base font-bold text-slate-800">스피드 매치를 하려면 단어가 4개 이상 필요합니다.</p></div>`;
         return;
     }
-    bombLives=3;bombScore=0;bombDifficultyMs=6000;bombRunning=true;
-    spawnBombRound();
+    speedRunning=true;speedScore=0;speedCombo=0;speedBestCombo=0;speedTimeLeft=45;
+    spawnSpeedQuestion();
+    clearInterval(speedTimerInterval);
+    speedTimerInterval=setInterval(()=>{
+        if(speedGameToken!==activeGameSession){clearInterval(speedTimerInterval);return;}
+        speedTimeLeft--;
+        const el=document.getElementById('speedTimeLeft');
+        if(el){el.textContent=speedTimeLeft+'초';el.className=speedTimeLeft<=10?'text-rose-500':'';}
+        if(speedTimeLeft<=0){clearInterval(speedTimerInterval);endSpeedGame();}
+    },1000);
 }
-function spawnBombRound(){
-    if(!bombRunning||bombGameToken!==activeGameSession)return;
+function spawnSpeedQuestion(){
+    if(!speedRunning||speedGameToken!==activeGameSession)return;
     const pool=[...gameWordPool];shuffleArray(pool);
     const target=pool[0];
     const distractorPool=pool.slice(1).map(w=>w.word);
     const distractors=[...new Set([...distractorPool,...FALLBACK_WORDS])]
         .filter(w=>w&&w.toLowerCase()!==target.word.toLowerCase())
         .sort(()=>Math.random()-0.5).slice(0,3);
-    const blocks=[{word:target.word,correct:true},...distractors.map(w=>({word:w,correct:false}))].sort(()=>Math.random()-0.5);
-    bombCurrentTarget=target;
-    renderBombGame(blocks);
-    clearTimeout(bombFallTimer);
-    bombFallTimer=setTimeout(()=>bombMiss(),bombDifficultyMs+300);
+    const choices=[{word:target.word,correct:true},...distractors.map(w=>({word:w,correct:false}))].sort(()=>Math.random()-0.5);
+    speedCurrentTarget=target;
+    renderSpeedGame(choices);
 }
-function renderBombGame(blocks){
-    if(bombGameToken!==activeGameSession)return;
+function renderSpeedGame(choices){
+    if(speedGameToken!==activeGameSession)return;
     const canvas=document.getElementById('gameCenterCanvas');if(!canvas)return;
+    const colors=['bg-indigo-500','bg-rose-500','bg-emerald-500','bg-violet-500'];
     canvas.innerHTML=`
     <div class="w-full max-w-md">
-        <div class="flex items-center justify-between mb-3 text-xs font-bold text-slate-500">
-            <span class="text-rose-500">${'❤️'.repeat(bombLives)}${'🤍'.repeat(3-bombLives)}</span>
-            <span>점수: ${bombScore}</span>
+        <div class="flex items-center justify-between mb-2 text-xs font-bold text-slate-500">
+            <span><i class="fa-solid fa-bolt text-amber-500"></i> <span id="speedTimeLeft">${speedTimeLeft}초</span></span>
+            <span>점수: <span id="speedScoreLabel">${speedScore}</span></span>
         </div>
-        <div class="text-sm font-black text-slate-800 bg-slate-100 rounded-xl px-4 py-3 mb-4">${escapeHtml(bombCurrentTarget.meanings.join(' / '))}</div>
-        <div id="bombPlayArea" class="relative w-full h-64 bg-slate-50 border-2 border-slate-200 rounded-2xl overflow-hidden">
-            ${blocks.map((b,i)=>`<button onclick="tapBombBlock(${b.correct},this)" style="left:${(i/blocks.length*100)}%;width:${100/blocks.length}%;top:-40px;transition:top ${bombDifficultyMs}ms linear;" class="bomb-block absolute px-1 py-2 text-[11px] sm:text-xs font-bold bg-white border border-slate-300 rounded-lg text-slate-700 hover:border-indigo-400">${escapeHtml(b.word)}</button>`).join('')}
+        <div class="text-center mb-2 h-4"><span class="text-xs font-black ${speedCombo>=2?'text-amber-500':'text-transparent'}">🔥 콤보 x${speedCombo}</span></div>
+        <div class="text-lg font-black text-slate-800 bg-slate-100 rounded-2xl px-4 py-4 mb-4 text-center">${escapeHtml(speedCurrentTarget.meanings.join(' / '))}</div>
+        <div id="speedChoiceGrid" class="grid grid-cols-2 gap-3 relative">
+            ${choices.map((c,i)=>`<button onclick="answerSpeedQuestion(${c.correct},this)" class="${colors[i%4]} hover:brightness-110 active:scale-95 text-white font-black text-sm sm:text-base py-5 rounded-2xl shadow-lg transition">${escapeHtml(c.word)}</button>`).join('')}
         </div>
     </div>`;
-    requestAnimationFrame(()=>{requestAnimationFrame(()=>{
-        if(bombGameToken!==activeGameSession)return;
-        document.querySelectorAll('.bomb-block').forEach(el=>{el.style.top='100%';});
-    });});
 }
-function tapBombBlock(isCorrect,el){
-    if(!bombRunning||bombGameToken!==activeGameSession)return;
-    clearTimeout(bombFallTimer);
-    document.querySelectorAll('.bomb-block').forEach(b=>b.style.pointerEvents='none');
+function answerSpeedQuestion(isCorrect,el){
+    if(!speedRunning||speedGameToken!==activeGameSession)return;
+    document.querySelectorAll('#speedChoiceGrid button').forEach(b=>b.style.pointerEvents='none');
     if(isCorrect){
-        el.classList.add('!bg-emerald-100','!border-emerald-400','!text-emerald-700');
-        bombScore++;
-        doSpeak(bombCurrentTarget.word);
-        markReviewed(bombCurrentTarget.id);
-        bombDifficultyMs=Math.max(2500,bombDifficultyMs-150);
-        setTimeout(()=>{if(bombGameToken!==activeGameSession)return;spawnBombRound();},600);
+        speedCombo++;speedBestCombo=Math.max(speedBestCombo,speedCombo);
+        const gained=10+Math.min(speedCombo,10)*2;
+        speedScore+=gained;
+        markReviewed(speedCurrentTarget.id);
+        doSpeak(speedCurrentTarget.word);
+        playCorrectSound();
+        el.classList.add('ring-4','ring-white');
+        popFloatingText(el,'+'+gained,'#fbbf24');
+        burstConfetti(document.getElementById('speedChoiceGrid'));
+        const scoreLabel=document.getElementById('speedScoreLabel');if(scoreLabel)scoreLabel.textContent=speedScore;
+        setTimeout(()=>{if(speedGameToken!==activeGameSession)return;spawnSpeedQuestion();},350);
     } else {
-        el.classList.add('!bg-rose-100','!border-rose-400','!text-rose-700');
-        bombMiss();
+        speedCombo=0;
+        playWrongSound();
+        shakeElement(document.getElementById('gameCenterCanvas'));
+        el.classList.add('!bg-slate-700');
+        setTimeout(()=>{if(speedGameToken!==activeGameSession)return;spawnSpeedQuestion();},450);
     }
 }
-function bombMiss(){
-    if(!bombRunning||bombGameToken!==activeGameSession)return;
-    bombLives--;
-    if(bombLives<=0){bombRunning=false;setTimeout(()=>showBombGameOver(),500);return;}
-    setTimeout(()=>{if(bombGameToken!==activeGameSession)return;spawnBombRound();},600);
+function endSpeedGame(){
+    speedRunning=false;
+    if(speedGameToken!==activeGameSession)return;
+    const rank=getSpeedRank(speedScore);
+    const canvas=document.getElementById('gameCenterCanvas');
+    canvas.innerHTML=`<div class="text-center relative"><div class="text-5xl mb-3">${rank.emoji}</div><p class="text-2xl font-black text-slate-800">${rank.label}</p><p class="text-slate-500 mt-2 text-sm">점수 ${speedScore}점 · 최고 콤보 ${speedBestCombo}</p><button onclick="startGame('speed')" class="mt-5 bg-amber-500 text-white px-6 py-2.5 rounded-xl font-bold text-sm">다시 하기</button></div>`;
+    playFanfareSound();burstConfetti(canvas);
 }
-function showBombGameOver(){
-    if(bombGameToken!==activeGameSession)return;
-    document.getElementById('gameCenterCanvas').innerHTML=`<div class="text-center"><i class="fa-solid fa-bomb text-5xl text-rose-500 mb-4"></i><p class="text-2xl font-black text-slate-800">게임 오버</p><p class="text-slate-500 mt-2 text-sm">최종 점수: ${bombScore}점</p><button onclick="startGame('bomb')" class="mt-5 bg-rose-600 text-white px-6 py-2.5 rounded-xl font-bold text-sm">다시 하기</button></div>`;
+function getSpeedRank(score){
+    if(score>=300)return{emoji:'💎',label:'다이아몬드!'};
+    if(score>=200)return{emoji:'🥇',label:'골드!'};
+    if(score>=120)return{emoji:'🥈',label:'실버!'};
+    if(score>=50)return{emoji:'🥉',label:'브론즈'};
+    return{emoji:'🌱',label:'초보'};
 }
 
 function escapeRegExp(s){return s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');}
