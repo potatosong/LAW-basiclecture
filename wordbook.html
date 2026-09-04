@@ -925,7 +925,11 @@ let studyList=[],studyIndex=0,studyMode='flashcard',fcFlipped=false,isShuffleOn=
 let wrongWords=[], retryRound=1;
 let choiceDirection='w2m', spellingInputMode='type';
 let tapPool=[], tapAnswer=[], tapCurrentIndex=-1;
-let matchCards=[], matchFlipped=[], matchMatchedCount=0, matchAttempts=0, matchStartTime=0, matchTimerInterval=null, matchLocked=false;
+let matchCards=[], matchFlipped=[], matchAttempts=0, matchTimerInterval=null, matchLocked=false;
+let matchAllWords=[], matchCompletedIds=new Set(), matchCarryOverIds=[], matchIntroducedIds=new Set();
+let matchRound=1, matchRoundPairTotal=0, matchRoundMatchedCount=0, matchCurrentRoundWords=[], matchTimeLeft=0, matchGameToken=0;
+let simonCards=[], simonSequence=[], simonUserStep=0, simonRound=0, simonPlaying=true, simonActiveIndex=-1, simonGameToken=0, simonAlive=true;
+let bombRunning=false, bombLives=3, bombScore=0, bombCurrentTarget=null, bombFallTimer=null, bombDifficultyMs=6000, bombGameToken=0;
 const FALLBACK_WORDS=['apple','banana','computer','freedom','journey','elephant','bicycle','mountain','holiday','kitchen','umbrella','pencil','garden','picture','airport'];
 
 let baseStudyList=[];// 원본 단어 목록 (모드 전환 시 재확장용)
@@ -1231,9 +1235,11 @@ function selectChoice(idx,el){
 }
 
 // ── 게임 센터 ──
-let gameWordPool=[], activeGameId=null;
+let gameWordPool=[], activeGameId=null, activeGameSession=0;
 const GAME_LIST=[
-    {id:'match',icon:'🧩',name:'짝맞추기',desc:'카드를 뒤집어 단어-뜻 짝을 맞춰보세요',color:'from-indigo-500 to-purple-500',start:startMatchGame}
+    {id:'match',icon:'🧩',name:'짝맞추기',desc:'제한시간 안에 카드를 뒤집어 단어-뜻 짝을 맞춰보세요. 못다 맞춘 단어는 다음 라운드에 다시 나와요.',color:'from-indigo-500 to-purple-500',start:startMatchGame},
+    {id:'simon',icon:'🧠',name:'단어 사이먼',desc:'점점 길어지는 단어 순서를 기억해서 그대로 따라 눌러보세요.',color:'from-emerald-500 to-teal-500',start:startSimonGame},
+    {id:'bomb',icon:'💣',name:'단어 폭탄',desc:'떨어지는 블록 중 뜻에 맞는 단어를 제한시간 안에 터치하세요.',color:'from-rose-500 to-orange-500',start:startBombGame}
 ];
 function openGameCenterModal(){
     gameWordPool=getWordsForFolder();
@@ -1243,7 +1249,8 @@ function openGameCenterModal(){
     window.addEventListener('keydown',handleGameCenterKeys);
 }
 function closeGameCenterModal(){
-    clearInterval(matchTimerInterval);
+    activeGameSession++;
+    clearInterval(matchTimerInterval);clearTimeout(bombFallTimer);
     document.getElementById('gameCenterModal').classList.add('hidden');
     window.removeEventListener('keydown',handleGameCenterKeys);
     saveData();renderWords();
@@ -1256,7 +1263,8 @@ function handleGameCenterKeys(e){
     else closeGameCenterModal();
 }
 function renderGameSelection(){
-    activeGameId=null;
+    activeGameId=null;activeGameSession++;
+    clearInterval(matchTimerInterval);clearTimeout(bombFallTimer);
     document.getElementById('gameCenterBackBtn').classList.add('hidden');
     document.getElementById('gameCenterTitle').innerHTML=`<i class="fa-solid fa-dice text-rose-400"></i> 게임 센터`;
     document.getElementById('gameCenterCanvas').innerHTML=`<div class="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-2xl">
@@ -1272,42 +1280,67 @@ function renderGameSelection(){
 }
 function startGame(id){
     const g=GAME_LIST.find(x=>x.id===id);if(!g)return;
-    activeGameId=id;
+    activeGameId=id;activeGameSession++;
     document.getElementById('gameCenterBackBtn').classList.remove('hidden');
     document.getElementById('gameCenterTitle').innerHTML=`<span>${g.icon}</span> ${g.name}`;
-    g.start();
+    g.start(activeGameSession);
 }
-function backToGameSelection(){ clearInterval(matchTimerInterval); renderGameSelection(); }
+function backToGameSelection(){ renderGameSelection(); }
 
-// ── 짝 맞추기 게임 ──
-function startMatchGame(){
+// ── 짝 맞추기 게임 (제한시간 · 이월 라운드) ──
+function startMatchGame(session){
+    matchGameToken=session;
     clearInterval(matchTimerInterval);
     if(gameWordPool.length<2){
         document.getElementById('gameCenterCanvas').innerHTML=`<div class="text-center"><i class="fa-solid fa-circle-exclamation text-4xl text-amber-500 mb-3"></i><p class="text-base font-bold text-slate-800">짝 맞추기를 하려면 단어가 2개 이상 필요합니다.</p></div>`;
         return;
     }
-    let pool=[...gameWordPool];
-    shuffleArray(pool);
-    const n=Math.min(6,pool.length);
-    const picks=pool.slice(0,n);
+    matchAllWords=[...gameWordPool];
+    matchCompletedIds=new Set();matchCarryOverIds=[];matchIntroducedIds=new Set();
+    matchRound=1;matchAttempts=0;
+    startMatchRound();
+}
+function assembleMatchRoundWords(){
+    const remaining=matchAllWords.filter(w=>!matchCompletedIds.has(w.id));
+    if(remaining.length===0)return[];
+    const carry=remaining.filter(w=>matchCarryOverIds.includes(w.id));
+    const fresh=remaining.filter(w=>!matchIntroducedIds.has(w.id));
+    shuffleArray(fresh);
+    const roundWords=[...carry];
+    for(const w of fresh){ if(roundWords.length>=6)break; roundWords.push(w); }
+    matchCarryOverIds=[];
+    roundWords.forEach(w=>matchIntroducedIds.add(w.id));
+    return roundWords;
+}
+function startMatchRound(){
+    if(matchGameToken!==activeGameSession)return;
+    clearInterval(matchTimerInterval);
+    const roundWords=assembleMatchRoundWords();
+    if(roundWords.length===0){showMatchComplete();return;}
+    matchCurrentRoundWords=roundWords;
     let cardsArr=[];
-    picks.forEach(w=>{
-        cardsArr.push({uid:'w_'+w.id,wordId:w.id,type:'word',text:w.word,matched:false});
-        cardsArr.push({uid:'m_'+w.id,wordId:w.id,type:'meaning',text:w.meanings[0],matched:false});
+    roundWords.forEach(w=>{
+        cardsArr.push({uid:'w_'+w.id+'_r'+matchRound,wordId:w.id,type:'word',text:w.word,matched:false});
+        cardsArr.push({uid:'m_'+w.id+'_r'+matchRound,wordId:w.id,type:'meaning',text:w.meanings[0],matched:false});
     });
     shuffleArray(cardsArr);
-    matchCards=cardsArr;matchFlipped=[];matchMatchedCount=0;matchAttempts=0;matchLocked=false;
-    matchStartTime=Date.now();
+    matchCards=cardsArr;matchFlipped=[];matchLocked=false;
+    matchRoundPairTotal=roundWords.length;matchRoundMatchedCount=0;
+    matchTimeLeft=Math.max(20,Math.min(90,roundWords.length*12));
     renderMatchGame();
     matchTimerInterval=setInterval(()=>{
-        const el=document.getElementById('matchTimer');if(!el)return;
-        el.textContent=formatMatchTime(Math.floor((Date.now()-matchStartTime)/1000));
+        if(matchGameToken!==activeGameSession){clearInterval(matchTimerInterval);return;}
+        matchTimeLeft--;
+        const el=document.getElementById('matchTimer');
+        if(el){el.textContent=matchTimeLeft+'초';el.parentElement.className=matchTimeLeft<=10?'text-rose-500 font-extrabold':'text-slate-500';}
+        if(matchTimeLeft<=0){clearInterval(matchTimerInterval);handleMatchRoundTimeUp();}
     },1000);
 }
-function formatMatchTime(sec){const m=Math.floor(sec/60),s=sec%60;return `${m}:${String(s).padStart(2,'0')}`;}
 function renderMatchGame(){
+    if(matchGameToken!==activeGameSession)return;
     const canvas=document.getElementById('gameCenterCanvas');if(!canvas)return;
-    const total=matchCards.length/2;
+    const totalWords=matchAllWords.length, doneWords=matchCompletedIds.size;
+    const timeColor=matchTimeLeft<=10?'text-rose-500 font-extrabold':'text-slate-500';
     const cardsHtml=matchCards.map(c=>{
         const base="aspect-square rounded-xl flex items-center justify-center text-center p-2 text-xs sm:text-sm font-bold transition select-none break-words";
         if(c.matched)return `<div class="${base} bg-emerald-100 border-2 border-emerald-400 text-emerald-700">${escapeHtml(c.text)}</div>`;
@@ -1316,13 +1349,13 @@ function renderMatchGame(){
     }).join('');
     canvas.innerHTML=`
     <div class="w-full max-w-2xl">
-        <div class="flex items-center justify-between mb-4 text-xs sm:text-sm font-bold text-slate-500">
-            <span><i class="fa-regular fa-clock mr-1"></i><span id="matchTimer">${formatMatchTime(Math.floor((Date.now()-matchStartTime)/1000))}</span></span>
-            <span>맞춘 짝: ${matchMatchedCount} / ${total}</span>
-            <span>시도: ${matchAttempts}</span>
+        <div class="flex items-center justify-between mb-4 text-xs sm:text-sm font-bold flex-wrap gap-y-1">
+            <span class="${timeColor}"><i class="fa-regular fa-clock mr-1"></i><span id="matchTimer">${matchTimeLeft}초</span></span>
+            <span class="text-slate-500">라운드 ${matchRound}</span>
+            <span class="text-slate-500">전체 진행: ${doneWords} / ${totalWords}</span>
         </div>
         <div class="grid grid-cols-3 sm:grid-cols-4 gap-2 sm:gap-3">${cardsHtml}</div>
-        <div class="text-center mt-5"><button onclick="startMatchGame()" class="bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold px-4 py-2 rounded-xl transition"><i class="fa-solid fa-rotate"></i> 새 라운드</button></div>
+        <div class="text-center mt-5"><button onclick="startGame('match')" class="bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold px-4 py-2 rounded-xl transition"><i class="fa-solid fa-rotate-left"></i> 처음부터 다시</button></div>
     </div>`;
 }
 function flipMatchCard(uid){
@@ -1334,22 +1367,190 @@ function flipMatchCard(uid){
     if(matchFlipped.length===2){
         matchAttempts++;matchLocked=true;
         const [a,b]=matchFlipped.map(id=>matchCards.find(c=>c.uid===id));
+        const roundAtFlip=matchRound;
         if(a.wordId===b.wordId&&a.type!==b.type){
-            a.matched=true;b.matched=true;matchMatchedCount++;markReviewed(a.wordId);
+            a.matched=true;b.matched=true;matchRoundMatchedCount++;matchCompletedIds.add(a.wordId);
+            markReviewed(a.wordId);
+            const wordCard=a.type==='word'?a:b;
+            doSpeak(wordCard.text);
             matchFlipped=[];matchLocked=false;
             renderMatchGame();
-            if(matchMatchedCount===matchCards.length/2){
+            if(matchRoundMatchedCount===matchRoundPairTotal){
                 clearInterval(matchTimerInterval);
-                setTimeout(()=>showMatchComplete(),300);
+                if(matchCompletedIds.size===matchAllWords.length)setTimeout(()=>showMatchComplete(),400);
+                else setTimeout(()=>showMatchRoundCleared(),400);
             }
         } else {
-            setTimeout(()=>{matchFlipped=[];matchLocked=false;renderMatchGame();},800);
+            setTimeout(()=>{
+                if(matchGameToken!==activeGameSession||matchRound!==roundAtFlip)return;
+                matchFlipped=[];matchLocked=false;renderMatchGame();
+            },800);
         }
     }
 }
+function showMatchRoundCleared(){
+    if(matchGameToken!==activeGameSession)return;
+    document.getElementById('gameCenterCanvas').innerHTML=`<div class="text-center"><i class="fa-solid fa-star text-4xl text-amber-400 mb-3"></i><p class="text-lg font-black text-slate-800">라운드 ${matchRound} 클리어! 🎉</p></div>`;
+    setTimeout(()=>{if(matchGameToken!==activeGameSession)return;matchRound++;startMatchRound();},1200);
+}
+function handleMatchRoundTimeUp(){
+    if(matchGameToken!==activeGameSession)return;
+    matchLocked=true;
+    matchCarryOverIds=[...new Set(matchCurrentRoundWords.filter(w=>!matchCompletedIds.has(w.id)).map(w=>w.id))];
+    document.getElementById('gameCenterCanvas').innerHTML=`<div class="text-center"><i class="fa-solid fa-hourglass-end text-4xl text-amber-500 mb-3"></i><p class="text-lg font-black text-slate-800">시간 종료!</p><p class="text-slate-500 mt-2 text-sm">못다 맞춘 ${matchCarryOverIds.length}개 단어는 다음 라운드에 다시 나와요.</p></div>`;
+    setTimeout(()=>{if(matchGameToken!==activeGameSession)return;matchRound++;startMatchRound();},1800);
+}
 function showMatchComplete(){
-    const sec=Math.floor((Date.now()-matchStartTime)/1000);
-    document.getElementById('gameCenterCanvas').innerHTML=`<div class="text-center"><i class="fa-solid fa-trophy text-5xl text-amber-400 mb-4"></i><p class="text-2xl font-black text-slate-800">모두 맞췄습니다! 🎉</p><p class="text-slate-500 mt-2 text-sm">시간 ${formatMatchTime(sec)} · 시도 ${matchAttempts}회</p><button onclick="startMatchGame()" class="mt-5 bg-indigo-600 text-white px-6 py-2.5 rounded-xl font-bold text-sm">다시 하기</button></div>`;
+    if(matchGameToken!==activeGameSession)return;
+    document.getElementById('gameCenterCanvas').innerHTML=`<div class="text-center"><i class="fa-solid fa-trophy text-5xl text-amber-400 mb-4"></i><p class="text-2xl font-black text-slate-800">전체 단어 짝맞추기 완료! 🎉</p><p class="text-slate-500 mt-2 text-sm">총 ${matchRound}라운드 · ${matchAllWords.length}개 단어 · 시도 ${matchAttempts}회</p><button onclick="startGame('match')" class="mt-5 bg-indigo-600 text-white px-6 py-2.5 rounded-xl font-bold text-sm">다시 하기</button></div>`;
+}
+
+// ── 단어 사이먼 게임 ──
+function startSimonGame(session){
+    simonGameToken=session;
+    if(gameWordPool.length<3){
+        document.getElementById('gameCenterCanvas').innerHTML=`<div class="text-center"><i class="fa-solid fa-circle-exclamation text-4xl text-amber-500 mb-3"></i><p class="text-base font-bold text-slate-800">단어 사이먼을 하려면 단어가 3개 이상 필요합니다.</p></div>`;
+        return;
+    }
+    const pool=[...gameWordPool];shuffleArray(pool);
+    simonCards=pool.slice(0,Math.min(9,pool.length));
+    simonSequence=[];simonRound=0;simonUserStep=0;simonActiveIndex=-1;simonAlive=true;
+    nextSimonRound();
+}
+function nextSimonRound(){
+    if(simonGameToken!==activeGameSession)return;
+    simonRound++;
+    simonSequence.push(Math.floor(Math.random()*simonCards.length));
+    simonUserStep=0;
+    playSimonSequence();
+}
+function renderSimonGame(){
+    if(simonGameToken!==activeGameSession)return;
+    const canvas=document.getElementById('gameCenterCanvas');if(!canvas)return;
+    const cols=simonCards.length<=4?'grid-cols-2':'grid-cols-3';
+    const status=simonPlaying?'👀 순서를 잘 보고 기억하세요':'👉 순서대로 눌러보세요';
+    const cardsHtml=simonCards.map((w,i)=>{
+        const active=i===simonActiveIndex;
+        return `<button onclick="handleSimonTap(${i})" ${simonPlaying?'disabled':''} class="aspect-square rounded-2xl flex items-center justify-center text-center p-2 text-sm sm:text-base font-black transition select-none break-words border-2 ${active?'bg-amber-400 border-amber-500 text-white scale-95':'bg-white border-slate-200 text-slate-700 hover:border-indigo-300'} ${simonPlaying?'cursor-default':'cursor-pointer'}">${escapeHtml(w.word)}</button>`;
+    }).join('');
+    canvas.innerHTML=`
+    <div class="w-full max-w-md">
+        <div class="flex items-center justify-between mb-3 text-xs sm:text-sm font-bold text-slate-500">
+            <span>라운드 ${simonRound}</span>
+            <span>${status}</span>
+        </div>
+        <div class="grid ${cols} gap-2.5 sm:gap-3">${cardsHtml}</div>
+    </div>`;
+}
+function playSimonSequence(){
+    if(simonGameToken!==activeGameSession)return;
+    simonPlaying=true;simonActiveIndex=-1;
+    renderSimonGame();
+    let i=0;
+    const mySession=simonGameToken;
+    function step(){
+        if(mySession!==activeGameSession)return;
+        if(i>=simonSequence.length){simonPlaying=false;simonActiveIndex=-1;renderSimonGame();return;}
+        simonActiveIndex=simonSequence[i];
+        renderSimonGame();
+        doSpeak(simonCards[simonActiveIndex].word);
+        setTimeout(()=>{
+            if(mySession!==activeGameSession)return;
+            simonActiveIndex=-1;renderSimonGame();
+            setTimeout(()=>{if(mySession!==activeGameSession)return;i++;step();},250);
+        },600);
+    }
+    setTimeout(step,500);
+}
+function handleSimonTap(idx){
+    if(simonPlaying||simonGameToken!==activeGameSession||!simonAlive)return;
+    simonActiveIndex=idx;renderSimonGame();
+    setTimeout(()=>{if(simonGameToken!==activeGameSession||!simonAlive)return;simonActiveIndex=-1;if(!simonPlaying)renderSimonGame();},200);
+    if(simonSequence[simonUserStep]===idx){
+        doSpeak(simonCards[idx].word);
+        simonUserStep++;
+        if(simonUserStep===simonSequence.length){
+            simonPlaying=true;
+            setTimeout(()=>{if(simonGameToken!==activeGameSession)return;nextSimonRound();},700);
+        }
+    } else {
+        simonAlive=false;
+        showSimonGameOver();
+    }
+}
+function showSimonGameOver(){
+    if(simonGameToken!==activeGameSession)return;
+    document.getElementById('gameCenterCanvas').innerHTML=`<div class="text-center"><i class="fa-solid fa-skull text-5xl text-slate-400 mb-4"></i><p class="text-2xl font-black text-slate-800">게임 오버</p><p class="text-slate-500 mt-2 text-sm">최고 라운드: ${simonRound-1}</p><button onclick="startGame('simon')" class="mt-5 bg-emerald-600 text-white px-6 py-2.5 rounded-xl font-bold text-sm">다시 하기</button></div>`;
+}
+
+// ── 단어 폭탄 게임 ──
+function startBombGame(session){
+    bombGameToken=session;
+    if(gameWordPool.length<4){
+        document.getElementById('gameCenterCanvas').innerHTML=`<div class="text-center"><i class="fa-solid fa-circle-exclamation text-4xl text-amber-500 mb-3"></i><p class="text-base font-bold text-slate-800">단어 폭탄 게임을 하려면 단어가 4개 이상 필요합니다.</p></div>`;
+        return;
+    }
+    bombLives=3;bombScore=0;bombDifficultyMs=6000;bombRunning=true;
+    spawnBombRound();
+}
+function spawnBombRound(){
+    if(!bombRunning||bombGameToken!==activeGameSession)return;
+    const pool=[...gameWordPool];shuffleArray(pool);
+    const target=pool[0];
+    const distractorPool=pool.slice(1).map(w=>w.word);
+    const distractors=[...new Set([...distractorPool,...FALLBACK_WORDS])]
+        .filter(w=>w&&w.toLowerCase()!==target.word.toLowerCase())
+        .sort(()=>Math.random()-0.5).slice(0,3);
+    const blocks=[{word:target.word,correct:true},...distractors.map(w=>({word:w,correct:false}))].sort(()=>Math.random()-0.5);
+    bombCurrentTarget=target;
+    renderBombGame(blocks);
+    clearTimeout(bombFallTimer);
+    bombFallTimer=setTimeout(()=>bombMiss(),bombDifficultyMs+300);
+}
+function renderBombGame(blocks){
+    if(bombGameToken!==activeGameSession)return;
+    const canvas=document.getElementById('gameCenterCanvas');if(!canvas)return;
+    canvas.innerHTML=`
+    <div class="w-full max-w-md">
+        <div class="flex items-center justify-between mb-3 text-xs font-bold text-slate-500">
+            <span class="text-rose-500">${'❤️'.repeat(bombLives)}${'🤍'.repeat(3-bombLives)}</span>
+            <span>점수: ${bombScore}</span>
+        </div>
+        <div class="text-sm font-black text-slate-800 bg-slate-100 rounded-xl px-4 py-3 mb-4">${escapeHtml(bombCurrentTarget.meanings.join(' / '))}</div>
+        <div id="bombPlayArea" class="relative w-full h-64 bg-slate-50 border-2 border-slate-200 rounded-2xl overflow-hidden">
+            ${blocks.map((b,i)=>`<button onclick="tapBombBlock(${b.correct},this)" style="left:${(i/blocks.length*100)}%;width:${100/blocks.length}%;top:-40px;transition:top ${bombDifficultyMs}ms linear;" class="bomb-block absolute px-1 py-2 text-[11px] sm:text-xs font-bold bg-white border border-slate-300 rounded-lg text-slate-700 hover:border-indigo-400">${escapeHtml(b.word)}</button>`).join('')}
+        </div>
+    </div>`;
+    requestAnimationFrame(()=>{requestAnimationFrame(()=>{
+        if(bombGameToken!==activeGameSession)return;
+        document.querySelectorAll('.bomb-block').forEach(el=>{el.style.top='100%';});
+    });});
+}
+function tapBombBlock(isCorrect,el){
+    if(!bombRunning||bombGameToken!==activeGameSession)return;
+    clearTimeout(bombFallTimer);
+    document.querySelectorAll('.bomb-block').forEach(b=>b.style.pointerEvents='none');
+    if(isCorrect){
+        el.classList.add('!bg-emerald-100','!border-emerald-400','!text-emerald-700');
+        bombScore++;
+        doSpeak(bombCurrentTarget.word);
+        markReviewed(bombCurrentTarget.id);
+        bombDifficultyMs=Math.max(2500,bombDifficultyMs-150);
+        setTimeout(()=>{if(bombGameToken!==activeGameSession)return;spawnBombRound();},600);
+    } else {
+        el.classList.add('!bg-rose-100','!border-rose-400','!text-rose-700');
+        bombMiss();
+    }
+}
+function bombMiss(){
+    if(!bombRunning||bombGameToken!==activeGameSession)return;
+    bombLives--;
+    if(bombLives<=0){bombRunning=false;setTimeout(()=>showBombGameOver(),500);return;}
+    setTimeout(()=>{if(bombGameToken!==activeGameSession)return;spawnBombRound();},600);
+}
+function showBombGameOver(){
+    if(bombGameToken!==activeGameSession)return;
+    document.getElementById('gameCenterCanvas').innerHTML=`<div class="text-center"><i class="fa-solid fa-bomb text-5xl text-rose-500 mb-4"></i><p class="text-2xl font-black text-slate-800">게임 오버</p><p class="text-slate-500 mt-2 text-sm">최종 점수: ${bombScore}점</p><button onclick="startGame('bomb')" class="mt-5 bg-rose-600 text-white px-6 py-2.5 rounded-xl font-bold text-sm">다시 하기</button></div>`;
 }
 
 function escapeRegExp(s){return s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');}
