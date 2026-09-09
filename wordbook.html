@@ -939,6 +939,10 @@ let speedAllWords=[], speedCompletedIds=new Set(), speedCarryOverIds=[], speedIn
 let speedRound=1, speedRoundWords=[], speedRoundIndex=0, speedRoundAnsweredIds=[], speedTimeLeft=0;
 let moleRunning=false, moleScore=0, moleCombo=0, moleBestCombo=0, moleTimeLeft=45, moleGameTimer=null, moleTarget=null, moleActiveHole=-1, moleActiveWord='', moleActiveCorrect=false, molePopTimer=null, moleGameToken=0, moleShowDuration=1200;
 const MOLE_HOLE_COUNT=9;
+let recallRunning=false, recallScore=0, recallCombo=0, recallBestCombo=0, recallGameToken=0;
+let recallAllWords=[], recallCompletedIds=new Set(), recallCarryOverIds=[], recallIntroducedIds=new Set();
+let recallRound=1, recallRoundWords=[], recallRoundIndex=0, recallRoundAnsweredIds=[], recallTimeLeft=0, recallTimerInterval=null;
+let recallCurrentTarget=null, recallHintsUsed=0, recallRevealedCount=0;
 const FALLBACK_WORDS=['apple','banana','computer','freedom','journey','elephant','bicycle','mountain','holiday','kitchen','umbrella','pencil','garden','picture','airport'];
 
 let baseStudyList=[];// 원본 단어 목록 (모드 전환 시 재확장용)
@@ -1137,7 +1141,7 @@ ${item.examples[0]?`<div class="mt-4 pt-4 border-t border-slate-100 w-full max-w
         } else {
             canvas.innerHTML=`<span class="text-xs font-extrabold text-amber-600 uppercase tracking-widest mb-2 block">✍️ 뜻을 보고 영어 단어를 입력하세요</span>
 <div class="text-lg sm:text-2xl font-black text-slate-900 mb-6 bg-slate-100 px-6 py-4 rounded-2xl max-w-lg w-full break-all">${item.meanings.join(', ')}</div>
-<div class="flex gap-2 max-w-sm w-full"><input type="text" id="spellInp" placeholder="철자 입력" onkeydown="if(event.key==='Enter')checkSpell()" class="flex-1 bg-white border border-slate-300 rounded-2xl px-4 py-3 text-center text-xl font-bold text-slate-900 focus:outline-none focus:border-indigo-600 tracking-wider" autocomplete="off"><button onclick="checkSpell()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-5 py-3 rounded-2xl text-sm transition">확인</button></div>
+<div class="flex gap-2 max-w-sm w-full"><input type="text" id="spellInp" placeholder="철자 입력" onkeydown="if(event.key==='Enter')checkSpell()" class="flex-1 bg-white border border-slate-300 rounded-2xl px-4 py-3 text-center text-xl font-bold text-slate-900 focus:outline-none focus:border-indigo-600 tracking-wider" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"><button onclick="checkSpell()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-5 py-3 rounded-2xl text-sm transition">확인</button></div>
 <div id="spellFb" class="mt-4 min-h-[28px] text-sm font-extrabold"></div>`;
             setTimeout(()=>document.getElementById('spellInp')?.focus(),50);
         }
@@ -1186,7 +1190,7 @@ ${item.examples[0]?`<div class="mt-4 pt-4 border-t border-slate-100 w-full max-w
 <div id="blankFb" class="mt-4 min-h-[28px] text-sm font-extrabold"></div>`;
         } else {
             canvas.innerHTML=`${header}
-<div class="flex gap-2 max-w-sm w-full"><input type="text" id="blankInp" placeholder="정답 입력" onkeydown="if(event.key==='Enter')checkBlank()" class="flex-1 bg-white border border-slate-300 rounded-2xl px-4 py-3 text-center text-lg font-bold text-slate-900 focus:outline-none focus:border-teal-600" autocomplete="off"><button onclick="checkBlank()" class="bg-teal-600 hover:bg-teal-700 text-white font-bold px-5 py-3 rounded-2xl text-sm transition">확인</button></div>
+<div class="flex gap-2 max-w-sm w-full"><input type="text" id="blankInp" placeholder="정답 입력" onkeydown="if(event.key==='Enter')checkBlank()" class="flex-1 bg-white border border-slate-300 rounded-2xl px-4 py-3 text-center text-lg font-bold text-slate-900 focus:outline-none focus:border-teal-600" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"><button onclick="checkBlank()" class="bg-teal-600 hover:bg-teal-700 text-white font-bold px-5 py-3 rounded-2xl text-sm transition">확인</button></div>
 <div id="blankFb" class="mt-4 min-h-[28px] text-sm font-extrabold"></div>`;
             setTimeout(()=>document.getElementById('blankInp')?.focus(),50);
         }
@@ -1395,7 +1399,8 @@ let gameWordPool=[], activeGameId=null, activeGameSession=0;
 const GAME_LIST=[
     {id:'match',icon:'🧩',name:'짝맞추기',desc:'제한시간 안에 카드를 뒤집어 단어-뜻 짝을 맞춰보세요. 못다 맞춘 단어는 다음 라운드에 다시 나와요.',color:'from-indigo-500 to-purple-500',start:startMatchGame},
     {id:'speed',icon:'⚡',name:'스피드 매치',desc:'제한시간 안에 최대한 빠르게 정답을 맞혀 콤보 점수를 쌓아보세요. 못다 푼 단어는 다음 라운드에 다시 나와요.',color:'from-amber-500 to-rose-500',start:startSpeedGame},
-    {id:'mole',icon:'🔨',name:'두더지 잡기',desc:'뜻에 맞는 단어가 튀어나올 때만 빠르게 탭하세요!',color:'from-amber-600 to-lime-600',start:startMoleGame}
+    {id:'mole',icon:'🔨',name:'두더지 잡기',desc:'뜻에 맞는 단어가 튀어나올 때만 빠르게 탭하세요!',color:'from-amber-600 to-lime-600',start:startMoleGame},
+    {id:'recall',icon:'🧠',name:'기억 소환 챌린지',desc:'선택지 없이 뜻만 보고 단어를 직접 입력하세요. 힌트를 적게 쓸수록 점수가 높아져요!',color:'from-sky-600 to-indigo-600',start:startRecallGame}
 ];
 function openGameCenterModal(){
     gameWordPool=getWordsForFolder();
@@ -1406,7 +1411,7 @@ function openGameCenterModal(){
 }
 function closeGameCenterModal(){
     activeGameSession++;
-    clearInterval(matchTimerInterval);clearInterval(speedTimerInterval);clearInterval(moleGameTimer);clearTimeout(molePopTimer);
+    clearInterval(matchTimerInterval);clearInterval(speedTimerInterval);clearInterval(moleGameTimer);clearTimeout(molePopTimer);clearInterval(recallTimerInterval);
     document.getElementById('gameCenterModal').classList.add('hidden');
     window.removeEventListener('keydown',handleGameCenterKeys);
     saveData();renderWords();
@@ -1420,7 +1425,7 @@ function handleGameCenterKeys(e){
 }
 function renderGameSelection(){
     activeGameId=null;activeGameSession++;
-    clearInterval(matchTimerInterval);clearInterval(speedTimerInterval);clearInterval(moleGameTimer);clearTimeout(molePopTimer);
+    clearInterval(matchTimerInterval);clearInterval(speedTimerInterval);clearInterval(moleGameTimer);clearTimeout(molePopTimer);clearInterval(recallTimerInterval);
     document.getElementById('gameCenterBackBtn').classList.add('hidden');
     document.getElementById('gameCenterTitle').innerHTML=`<i class="fa-solid fa-dice text-rose-400"></i> 게임 센터`;
     document.getElementById('gameCenterCanvas').innerHTML=`<div class="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-2xl">
@@ -1863,6 +1868,165 @@ function endMoleGame(){
     const canvas=document.getElementById('gameCenterCanvas');
     canvas.innerHTML=`<div class="text-center relative"><div class="text-5xl mb-3">${rank.emoji}</div><p class="text-2xl font-black text-slate-800">${rank.label}</p><p class="text-slate-500 mt-2 text-sm">점수 ${moleScore}점 · 최고 콤보 ${moleBestCombo}</p><button onclick="startGame('mole')" class="mt-5 bg-amber-600 text-white px-6 py-2.5 rounded-xl font-bold text-sm">다시 하기</button></div>`;
     playFanfareSound();burstConfetti(canvas);
+}
+
+// ── 기억 소환 챌린지 (선택지 없이 직접 입력하는 자유 회상 게임) ──
+function startRecallGame(session){
+    recallGameToken=session;
+    if(gameWordPool.length<4){
+        document.getElementById('gameCenterCanvas').innerHTML=`<div class="text-center"><i class="fa-solid fa-circle-exclamation text-4xl text-amber-500 mb-3"></i><p class="text-base font-bold text-slate-800">기억 소환 챌린지를 하려면 단어가 4개 이상 필요합니다.</p></div>`;
+        return;
+    }
+    recallAllWords=[...gameWordPool];
+    recallCompletedIds=new Set();recallCarryOverIds=[];recallIntroducedIds=new Set();
+    recallRound=1;recallScore=0;recallCombo=0;recallBestCombo=0;
+    startRecallRound();
+}
+function assembleRecallRoundWords(){
+    const remaining=recallAllWords.filter(w=>!recallCompletedIds.has(w.id));
+    if(remaining.length===0)return[];
+    const carry=remaining.filter(w=>recallCarryOverIds.includes(w.id));
+    const fresh=remaining.filter(w=>!recallIntroducedIds.has(w.id));
+    shuffleArray(fresh);
+    const roundWords=[...carry];
+    for(const w of fresh){ if(roundWords.length>=8)break; roundWords.push(w); }
+    recallCarryOverIds=[];
+    roundWords.forEach(w=>recallIntroducedIds.add(w.id));
+    shuffleArray(roundWords);
+    return roundWords;
+}
+function startRecallRound(){
+    if(recallGameToken!==activeGameSession)return;
+    clearInterval(recallTimerInterval);
+    const roundWords=assembleRecallRoundWords();
+    if(roundWords.length===0){endRecallGame();return;}
+    recallRoundWords=roundWords;recallRoundIndex=0;recallRoundAnsweredIds=[];
+    recallRunning=true;
+    recallTimeLeft=Math.max(30,Math.min(90,roundWords.length*9));
+    spawnRecallQuestion();
+    startRecallTimerTick();
+}
+function startRecallTimerTick(){
+    clearInterval(recallTimerInterval);
+    recallTimerInterval=setInterval(()=>{
+        if(recallGameToken!==activeGameSession){clearInterval(recallTimerInterval);return;}
+        recallTimeLeft--;
+        const el=document.getElementById('recallTimeLeft');
+        if(el){el.textContent=recallTimeLeft+'초';el.className=recallTimeLeft<=10?'text-rose-500 font-extrabold':'text-slate-500';}
+        if(recallTimeLeft<=0){clearInterval(recallTimerInterval);handleRecallRoundTimeUp();}
+    },1000);
+}
+function spawnRecallQuestion(){
+    if(!recallRunning||recallGameToken!==activeGameSession)return;
+    if(recallRoundIndex>=recallRoundWords.length){
+        clearInterval(recallTimerInterval);
+        finishRecallRound();
+        return;
+    }
+    recallCurrentTarget=recallRoundWords[recallRoundIndex];
+    recallHintsUsed=0;recallRevealedCount=0;
+    renderRecallGame();
+}
+function renderRecallGame(){
+    if(recallGameToken!==activeGameSession)return;
+    const canvas=document.getElementById('gameCenterCanvas');if(!canvas)return;
+    const totalWords=recallAllWords.length,doneWords=recallCompletedIds.size;
+    const word=recallCurrentTarget.word;
+    const blanks=word.split('').map((ch,i)=>i<recallRevealedCount?ch.toUpperCase():'_').join(' ');
+    canvas.innerHTML=`
+    <div class="w-full max-w-md">
+        <div class="flex items-center justify-between mb-1 text-xs font-bold flex-wrap gap-y-1">
+            <span class="${recallTimeLeft<=10?'text-rose-500 font-extrabold':'text-slate-500'}"><i class="fa-solid fa-brain text-indigo-500"></i> <span id="recallTimeLeft">${recallTimeLeft}초</span></span>
+            <span class="text-slate-500">라운드 ${recallRound}</span>
+            <span class="text-slate-500">전체 진행: ${doneWords} / ${totalWords}</span>
+        </div>
+        <div class="text-center mb-2 h-4"><span class="text-xs font-black ${recallCombo>=2?'text-amber-500':'text-transparent'}">🔥 콤보 x${recallCombo}</span></div>
+        <div class="text-lg font-black text-slate-800 bg-slate-100 rounded-2xl px-4 py-4 mb-3 text-center">${escapeHtml(recallCurrentTarget.meanings.join(' / '))}</div>
+        <div class="text-center font-mono text-xl sm:text-2xl font-black tracking-widest text-indigo-700 mb-4 break-all">${blanks}</div>
+        <div class="flex gap-2 max-w-sm mx-auto mb-2">
+            <input type="text" id="recallInp" placeholder="정답 입력" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" onkeydown="if(event.key==='Enter')checkRecallAnswer()" class="flex-1 bg-white border border-slate-300 rounded-2xl px-4 py-3 text-center text-lg font-bold text-slate-900 focus:outline-none focus:border-indigo-600">
+            <button onclick="checkRecallAnswer()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-5 py-3 rounded-2xl text-sm transition">확인</button>
+        </div>
+        <div class="text-center"><button onclick="useRecallHint()" class="text-xs font-bold text-amber-600 hover:text-amber-700 transition"><i class="fa-solid fa-lightbulb"></i> 힌트 보기 (점수 감소)</button></div>
+        <div id="recallFb" class="mt-3 text-center text-sm font-extrabold min-h-[24px]"></div>
+    </div>`;
+    setTimeout(()=>document.getElementById('recallInp')?.focus(),50);
+}
+function useRecallHint(){
+    if(!recallRunning||recallGameToken!==activeGameSession)return;
+    const item=recallCurrentTarget;if(!item)return;
+    if(recallRevealedCount>=item.word.length)return;
+    const typed=document.getElementById('recallInp')?.value||'';
+    recallRevealedCount++;recallHintsUsed++;
+    renderRecallGame();
+    const inp=document.getElementById('recallInp');
+    if(inp){inp.value=typed;inp.focus();inp.selectionStart=inp.selectionEnd=typed.length;}
+}
+function checkRecallAnswer(){
+    if(!recallRunning||recallGameToken!==activeGameSession)return;
+    const item=recallCurrentTarget;if(!item)return;
+    const inp=document.getElementById('recallInp');
+    const u=(inp?.value||'').trim().toLowerCase();
+    if(!u)return;
+    if(inp)inp.disabled=true;
+    clearInterval(recallTimerInterval);
+    recallRoundAnsweredIds.push(item.id);
+    const fb=document.getElementById('recallFb');
+    const correct=u===item.word.toLowerCase();
+    if(correct){
+        recallCombo++;recallBestCombo=Math.max(recallBestCombo,recallCombo);
+        const gained=Math.max(4,(10+Math.min(recallCombo,10)*2)-recallHintsUsed*8);
+        recallScore+=gained;
+        recallCompletedIds.add(item.id);
+        markReviewed(item.id);
+        doSpeak(item.word);
+        playCorrectSound();
+        if(fb)fb.innerHTML=`<span class="text-emerald-600"><i class="fa-solid fa-circle-check"></i> 정답! +${gained}</span>`;
+        burstConfetti(document.getElementById('gameCenterCanvas'));
+    } else {
+        recallCombo=0;
+        if(!recallCarryOverIds.includes(item.id))recallCarryOverIds.push(item.id);
+        playWrongSound();
+        shakeElement(document.getElementById('gameCenterCanvas'));
+        if(fb)fb.innerHTML=`<span class="text-rose-600">오답 — 정답: <strong class="underline font-mono">${item.word}</strong></span>`;
+    }
+    recallRoundIndex++;
+    setTimeout(()=>{
+        if(recallGameToken!==activeGameSession)return;
+        if(recallRoundIndex<recallRoundWords.length){
+            recallRunning=true;
+            spawnRecallQuestion();
+            startRecallTimerTick();
+        } else {
+            finishRecallRound();
+        }
+    },correct?700:1200);
+}
+function finishRecallRound(){
+    if(recallGameToken!==activeGameSession)return;
+    const canvas=document.getElementById('gameCenterCanvas');
+    canvas.innerHTML=`<div class="text-center relative"><i class="fa-solid fa-star text-4xl text-amber-400 mb-3"></i><p class="text-lg font-black text-slate-800">라운드 ${recallRound} 클리어! 🎉</p><p class="text-slate-500 mt-1 text-xs">점수 ${recallScore}점</p></div>`;
+    playFanfareSound();burstConfetti(canvas);
+    setTimeout(()=>{if(recallGameToken!==activeGameSession)return;recallRound++;startRecallRound();},1200);
+}
+function handleRecallRoundTimeUp(){
+    if(recallGameToken!==activeGameSession)return;
+    recallRunning=false;
+    recallRoundWords.filter(w=>!recallRoundAnsweredIds.includes(w.id)).forEach(w=>{
+        if(!recallCarryOverIds.includes(w.id))recallCarryOverIds.push(w.id);
+    });
+    const canvas=document.getElementById('gameCenterCanvas');
+    canvas.innerHTML=`<div class="text-center"><i class="fa-solid fa-hourglass-end text-4xl text-amber-500 mb-3"></i><p class="text-lg font-black text-slate-800">시간 종료!</p><p class="text-slate-500 mt-2 text-sm">못다 푼 단어는 다음 라운드에 다시 나와요.</p></div>`;
+    playWrongSound();shakeElement(canvas);
+    setTimeout(()=>{if(recallGameToken!==activeGameSession)return;recallRound++;startRecallRound();},1800);
+}
+function endRecallGame(){
+    if(recallGameToken!==activeGameSession)return;
+    recallRunning=false;
+    const rank=getSpeedRank(recallScore);
+    const canvas=document.getElementById('gameCenterCanvas');
+    canvas.innerHTML=`<div class="text-center relative"><div class="text-5xl mb-3">${rank.emoji}</div><p class="text-2xl font-black text-slate-800">${rank.label}</p><p class="text-slate-500 mt-2 text-sm">전체 ${recallAllWords.length}개 단어 완료 · 총 ${recallRound}라운드 · 점수 ${recallScore}점 · 최고 콤보 ${recallBestCombo}</p><button onclick="startGame('recall')" class="mt-5 bg-indigo-600 text-white px-6 py-2.5 rounded-xl font-bold text-sm">다시 하기</button></div>`;
+    playFanfareSound();burstConfetti(canvas);setTimeout(()=>burstConfetti(canvas),300);
 }
 
 function escapeRegExp(s){return s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');}
