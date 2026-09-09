@@ -429,13 +429,23 @@ let currentView='words';
 let reviewWordsCache=[], reviewFilter='smart';
 let gems=0, collectedCards=[], growthTab='garden';
 const GACHA_COST=15;
-const GARDEN_STAGES=[
-    {min:0,emoji:'🌰',label:'씨앗'},
-    {min:5,emoji:'🌱',label:'새싹'},
-    {min:15,emoji:'🌿',label:'어린 나무'},
-    {min:30,emoji:'🌳',label:'꽃 핀 나무'},
-    {min:50,emoji:'🌸',label:'풍성한 정원'}
+const GARDEN_STEP=20;
+const GARDEN_STAGE_NAMES=[
+    {emoji:'🌰',label:'씨앗'},
+    {emoji:'🌱',label:'새싹'},
+    {emoji:'🌿',label:'어린 나무'},
+    {emoji:'🌳',label:'꽃 핀 나무'},
+    {emoji:'🌸',label:'작은 정원'},
+    {emoji:'🌺',label:'풍성한 정원'},
+    {emoji:'🏵️',label:'화려한 정원'},
+    {emoji:'🌟',label:'전설의 정원'}
 ];
+function getGardenStage(memorizedCount){
+    const step=Math.floor(memorizedCount/GARDEN_STEP);
+    const idx=Math.min(GARDEN_STAGE_NAMES.length-1,step);
+    const level=step-idx+1;
+    return {...GARDEN_STAGE_NAMES[idx],idx,step,level};
+}
 const CARD_EMOJIS=['🦊','🐼','🦁','🐸','🐙','🦋','🐳','🦉','🐝','🦄','🐢','🦜','🐬','🦈','🐨'];
 const REVIEW_FILTER_DESC={
     smart:'암기 여부, 복습 경과일, 오답 횟수를 종합해 우선순위가 높은 단어를 추천합니다.',
@@ -591,14 +601,13 @@ function renderGardenTab(){
     const now=Date.now(),DAY=86400000;
     const daysSince=lastActivity?Math.floor((now-lastActivity)/DAY):null;
     const wilting=daysSince!==null&&daysSince>=3;
-    let stage=GARDEN_STAGES[0];
-    GARDEN_STAGES.forEach(s=>{ if(memorizedCount>=s.min)stage=s; });
+    const stage=getGardenStage(memorizedCount);
     const flowerCount=Math.min(10,Math.floor(memorizedCount/10));
     const flowers=Array.from({length:flowerCount}).map(()=>'🌷').join(' ');
     container.innerHTML=`
     <div class="text-center py-6 ${wilting?'grayscale opacity-60':''} transition">
         <div class="text-7xl mb-2">${stage.emoji}</div>
-        <div class="text-sm font-black text-slate-700">${stage.label}</div>
+        <div class="text-sm font-black text-slate-700">${stage.label}${stage.level>1?` <span class="text-emerald-600">Lv.${stage.level}</span>`:''}</div>
         ${flowerCount>0?`<div class="text-2xl mt-2">${flowers}</div>`:''}
     </div>
     ${wilting?`<div class="bg-amber-50 border border-amber-200 text-amber-700 text-xs font-bold rounded-xl px-3 py-2.5 mb-3 text-center">🥀 ${daysSince}일째 물을 안 줬어요! 복습하면 다시 활기를 되찾아요.</div>`:''}
@@ -622,12 +631,14 @@ function renderGardenTab(){
     </div>`;
 }
 function renderGardenProgressBar(memorizedCount){
-    const next=GARDEN_STAGES.find(s=>s.min>memorizedCount);
-    if(!next)return `<div class="text-xs font-bold text-emerald-600">🎉 최고 단계에 도달했어요!</div>`;
-    const prevMin=[...GARDEN_STAGES].reverse().find(s=>s.min<=memorizedCount).min;
-    const pct=Math.min(100,Math.round((memorizedCount-prevMin)/(next.min-prevMin)*100));
+    const stage=getGardenStage(memorizedCount);
+    const prevThreshold=stage.step*GARDEN_STEP;
+    const nextThreshold=(stage.step+1)*GARDEN_STEP;
+    const nextStage=getGardenStage(nextThreshold);
+    const pct=Math.min(100,Math.round((memorizedCount-prevThreshold)/GARDEN_STEP*100));
+    const nextLabel=nextStage.level>1?`${nextStage.label} Lv.${nextStage.level}`:nextStage.label;
     return `<div class="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden"><div class="h-full bg-emerald-500 rounded-full transition-all" style="width:${pct}%"></div></div>
-    <div class="text-[10px] text-slate-400 mt-1">${next.emoji} ${next.label}까지 ${next.min-memorizedCount}개 더 암기하세요</div>`;
+    <div class="text-[10px] text-slate-400 mt-1">${nextStage.emoji} ${nextLabel}까지 ${nextThreshold-memorizedCount}개 더 암기하세요</div>`;
 }
 function hashStr(s){let h=0;for(let i=0;i<s.length;i++){h=(h*31+s.charCodeAt(i))>>>0;}return h;}
 function getCardEmoji(word){return CARD_EMOJIS[hashStr(word)%CARD_EMOJIS.length];}
