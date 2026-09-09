@@ -169,6 +169,12 @@
                 <span class="text-xs font-bold">오늘의 복습</span>
                 <span id="reviewCountBadge" class="hidden ml-auto text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded-full font-mono"></span>
             </div>
+            <div id="growthMenuItem" onclick="selectView('growth')"
+                class="flex items-center gap-2.5 p-2.5 rounded-xl cursor-pointer mb-1 transition hover:bg-slate-800 text-slate-400 hover:text-slate-200">
+                <i class="fa-solid fa-star text-sm text-emerald-400"></i>
+                <span class="text-xs font-bold">성장</span>
+                <span id="gemsBadge" class="hidden ml-auto text-[10px] bg-sky-500/20 text-sky-300 px-1.5 py-0.5 rounded-full font-mono"></span>
+            </div>
             <div onclick="openWorksheetModal()"
                 class="flex items-center gap-2.5 p-2.5 rounded-xl cursor-pointer mb-3 transition hover:bg-slate-800 text-slate-400 hover:text-slate-200">
                 <i class="fa-solid fa-print text-sm text-rose-400"></i>
@@ -310,6 +316,22 @@
                     <div id="reviewWordList" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5"></div>
                 </div>
             </div>
+
+            <div id="growthView" class="hidden space-y-4">
+                <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
+                    <div class="flex items-center justify-between gap-2 mb-3 flex-wrap">
+                        <h3 class="font-extrabold text-slate-700 flex items-center gap-2"><i class="fa-solid fa-star text-emerald-500"></i> 성장</h3>
+                        <div class="flex items-center gap-1.5 bg-sky-50 border border-sky-200 text-sky-700 px-3 py-1.5 rounded-lg text-xs font-extrabold">
+                            <i class="fa-solid fa-gem"></i> <span id="gemsLabel">0</span> 젬
+                        </div>
+                    </div>
+                    <div class="flex gap-1.5 mb-4">
+                        <button onclick="setGrowthTab('garden')" data-growth-tab="garden" class="growth-tab-btn flex-1 text-sm font-bold px-3 py-2 rounded-xl transition">🌱 정원</button>
+                        <button onclick="setGrowthTab('collection')" data-growth-tab="collection" class="growth-tab-btn flex-1 text-sm font-bold px-3 py-2 rounded-xl transition">🎴 컬렉션</button>
+                    </div>
+                    <div id="growthTabContent"></div>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -387,8 +409,8 @@
         if(m) m.textContent=msg;
         if(t){t.classList.remove('hidden');clearTimeout(window._tt);window._tt=setTimeout(()=>t.classList.add('hidden'),2000);}
     }
-    window._saveToFirestore = async (folderTree, words) => {
-        try { showSync('저장 중...','#facc15'); await setDoc(DATA_DOC,{folderTree,words,updatedAt:Date.now()}); showSync('동기화됨','#34d399'); }
+    window._saveToFirestore = async (folderTree, words, gems, collectedCards) => {
+        try { showSync('저장 중...','#facc15'); await setDoc(DATA_DOC,{folderTree,words,gems:gems||0,collectedCards:collectedCards||[],updatedAt:Date.now()}); showSync('동기화됨','#34d399'); }
         catch(e) { showSync('저장 실패','#f87171'); }
     };
     onSnapshot(DATA_DOC, snap => {
@@ -398,13 +420,23 @@
 </script>
 
 <script>
-const LS_TREE='smart_folders_tree_v3', LS_WORDS='smart_words_pro_v3';
+const LS_TREE='smart_folders_tree_v3', LS_WORDS='smart_words_pro_v3', LS_GEMS='smart_gems_v1', LS_CARDS='smart_cards_v1';
 let folderTree=[], words=[], activeFolderId='';
 let sortMode='newest', isBlurMode=false, isHideMemorized=false, isHideExtra=false;
 let editingWordId=null, currentActiveWord='';
 let collapsedFolders=new Set(), movingWordId=null;
 let currentView='words';
 let reviewWordsCache=[], reviewFilter='smart';
+let gems=0, collectedCards=[], growthTab='garden';
+const GACHA_COST=15;
+const GARDEN_STAGES=[
+    {min:0,emoji:'🌰',label:'씨앗'},
+    {min:5,emoji:'🌱',label:'새싹'},
+    {min:15,emoji:'🌿',label:'어린 나무'},
+    {min:30,emoji:'🌳',label:'꽃 핀 나무'},
+    {min:50,emoji:'🌸',label:'풍성한 정원'}
+];
+const CARD_EMOJIS=['🦊','🐼','🦁','🐸','🐙','🦋','🐳','🦉','🐝','🦄','🐢','🦜','🐬','🦈','🐨'];
 const REVIEW_FILTER_DESC={
     smart:'암기 여부, 복습 경과일, 오답 횟수를 종합해 우선순위가 높은 단어를 추천합니다.',
     unmemorized:'아직 암기하지 못한 단어를 오래 방치된 순서로 보여줍니다.',
@@ -420,12 +452,16 @@ function setGeminiKey(){
 }
 
 window._initApp = function(fireData){
-    if(fireData){ folderTree=fireData.folderTree||[]; words=(fireData.words||[]).map(w=>normalizeWord(w,folderTree)); }
-    else {
+    if(fireData){
+        folderTree=fireData.folderTree||[]; words=(fireData.words||[]).map(w=>normalizeWord(w,folderTree));
+        gems=fireData.gems||0; collectedCards=fireData.collectedCards||[];
+    } else {
         const t=localStorage.getItem(LS_TREE);
         folderTree=t?JSON.parse(t):[{id:'f_root_0',name:'Day 1',parentId:null},{id:'f_root_1',name:'회화 표현',parentId:null},{id:'f_root_2',name:'수능 대비',parentId:null}];
         const w=localStorage.getItem(LS_WORDS);
         words=w?JSON.parse(w).map(x=>normalizeWord(x,folderTree)):[];
+        gems=parseInt(localStorage.getItem(LS_GEMS)||'0',10)||0;
+        collectedCards=JSON.parse(localStorage.getItem(LS_CARDS)||'[]');
     }
     const saved=localStorage.getItem('smart_active_folder_id');
     activeFolderId=(saved&&folderTree.some(f=>f.id===saved))?saved:(folderTree[0]?.id||'');
@@ -522,11 +558,148 @@ function openReviewStudyModal(){
     openStudyModal([...reviewWordsCache]);
 }
 
+// ── 성장 (정원 · 카드 컬렉션) ──
+function awardGems(amount){
+    amount=Math.max(0,amount||0);
+    if(amount>0){gems+=amount;saveData();}
+    updateGemsDisplay();
+    return amount;
+}
+function updateGemsDisplay(){
+    const label=document.getElementById('gemsLabel');if(label)label.textContent=gems;
+    const badge=document.getElementById('gemsBadge');
+    if(badge){ if(gems>0){badge.textContent=gems+'💎';badge.classList.remove('hidden');} else badge.classList.add('hidden'); }
+}
+function renderGrowthView(){
+    updateGemsDisplay();
+    setGrowthTab(growthTab);
+}
+function setGrowthTab(tab){
+    growthTab=tab;
+    document.querySelectorAll('.growth-tab-btn').forEach(b=>{
+        const active=b.dataset.growthTab===tab;
+        b.className=`growth-tab-btn flex-1 text-sm font-bold px-3 py-2 rounded-xl transition ${active?'bg-indigo-600 text-white':'bg-slate-100 text-slate-600 hover:bg-slate-200'}`;
+    });
+    if(tab==='garden')renderGardenTab();
+    else renderCollectionTab();
+}
+function renderGardenTab(){
+    const container=document.getElementById('growthTabContent');if(!container)return;
+    const memorizedCount=words.filter(w=>w.memorized).length;
+    const totalCount=words.length;
+    const lastActivity=words.reduce((max,w)=>Math.max(max,w.lastReviewed||0),0);
+    const now=Date.now(),DAY=86400000;
+    const daysSince=lastActivity?Math.floor((now-lastActivity)/DAY):null;
+    const wilting=daysSince!==null&&daysSince>=3;
+    let stage=GARDEN_STAGES[0];
+    GARDEN_STAGES.forEach(s=>{ if(memorizedCount>=s.min)stage=s; });
+    const flowerCount=Math.min(10,Math.floor(memorizedCount/10));
+    const flowers=Array.from({length:flowerCount}).map(()=>'🌷').join(' ');
+    container.innerHTML=`
+    <div class="text-center py-6 ${wilting?'grayscale opacity-60':''} transition">
+        <div class="text-7xl mb-2">${stage.emoji}</div>
+        <div class="text-sm font-black text-slate-700">${stage.label}</div>
+        ${flowerCount>0?`<div class="text-2xl mt-2">${flowers}</div>`:''}
+    </div>
+    ${wilting?`<div class="bg-amber-50 border border-amber-200 text-amber-700 text-xs font-bold rounded-xl px-3 py-2.5 mb-3 text-center">🥀 ${daysSince}일째 물을 안 줬어요! 복습하면 다시 활기를 되찾아요.</div>`:''}
+    <div class="grid grid-cols-3 gap-2 text-center">
+        <div class="bg-emerald-50 border border-emerald-100 rounded-xl p-3">
+            <div class="text-xl font-black text-emerald-700">${memorizedCount}</div>
+            <div class="text-[10px] font-bold text-emerald-500 mt-0.5">암기 완료</div>
+        </div>
+        <div class="bg-indigo-50 border border-indigo-100 rounded-xl p-3">
+            <div class="text-xl font-black text-indigo-700">${totalCount}</div>
+            <div class="text-[10px] font-bold text-indigo-500 mt-0.5">전체 단어</div>
+        </div>
+        <div class="bg-slate-50 border border-slate-200 rounded-xl p-3">
+            <div class="text-xl font-black text-slate-700">${daysSince===null?'-':daysSince+'일'}</div>
+            <div class="text-[10px] font-bold text-slate-500 mt-0.5">마지막 학습</div>
+        </div>
+    </div>
+    <div class="mt-4">
+        <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">다음 단계까지</div>
+        ${renderGardenProgressBar(memorizedCount)}
+    </div>`;
+}
+function renderGardenProgressBar(memorizedCount){
+    const next=GARDEN_STAGES.find(s=>s.min>memorizedCount);
+    if(!next)return `<div class="text-xs font-bold text-emerald-600">🎉 최고 단계에 도달했어요!</div>`;
+    const prevMin=[...GARDEN_STAGES].reverse().find(s=>s.min<=memorizedCount).min;
+    const pct=Math.min(100,Math.round((memorizedCount-prevMin)/(next.min-prevMin)*100));
+    return `<div class="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden"><div class="h-full bg-emerald-500 rounded-full transition-all" style="width:${pct}%"></div></div>
+    <div class="text-[10px] text-slate-400 mt-1">${next.emoji} ${next.label}까지 ${next.min-memorizedCount}개 더 암기하세요</div>`;
+}
+function hashStr(s){let h=0;for(let i=0;i<s.length;i++){h=(h*31+s.charCodeAt(i))>>>0;}return h;}
+function getCardEmoji(word){return CARD_EMOJIS[hashStr(word)%CARD_EMOJIS.length];}
+function rollRarity(){
+    const r=Math.random();
+    if(r<0.05)return{tier:'epic',label:'에픽',color:'from-fuchsia-500 to-purple-600'};
+    if(r<0.30)return{tier:'rare',label:'레어',color:'from-sky-500 to-indigo-600'};
+    return{tier:'common',label:'커먼',color:'from-slate-400 to-slate-500'};
+}
+function renderCollectionTab(){
+    const container=document.getElementById('growthTabContent');if(!container)return;
+    const totalDistinctWords=new Set(words.map(w=>w.id)).size;
+    const collectedCount=collectedCards.length;
+    container.innerHTML=`
+    <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <div class="text-xs font-bold text-slate-500">컬렉션 ${collectedCount} / ${totalDistinctWords}</div>
+        <button onclick="pullGachaCard()" class="bg-gradient-to-r from-sky-600 to-indigo-600 text-white px-4 py-2 rounded-xl text-xs font-extrabold shadow flex items-center gap-1.5"><i class="fa-solid fa-gift"></i> 카드 뽑기 (${GACHA_COST}젬)</button>
+    </div>
+    ${collectedCount===0?`<div class="py-10 text-center text-slate-400 text-sm">아직 모은 카드가 없어요. 게임을 플레이해서 젬을 모아보세요!</div>`
+        :`<div class="grid grid-cols-3 sm:grid-cols-4 gap-2.5">${collectedCards.slice().sort((a,b)=>b.obtainedAt-a.obtainedAt).map(c=>{
+            const rarityColor=c.tier==='epic'?'from-fuchsia-500 to-purple-600':c.tier==='rare'?'from-sky-500 to-indigo-600':'from-slate-300 to-slate-400';
+            return `<div class="bg-gradient-to-br ${rarityColor} text-white rounded-xl p-3 text-center shadow">
+                <div class="text-2xl">${c.emoji}</div>
+                <div class="text-[11px] font-black truncate mt-1">${escapeHtml(c.word)}</div>
+            </div>`;
+        }).join('')}</div>`}
+    `;
+}
+function pullGachaCard(){
+    if(gems<GACHA_COST){ alert(`젬이 부족해요! (필요: ${GACHA_COST}, 보유: ${gems})`); return; }
+    const memorizedPool=words.filter(w=>w.memorized);
+    const sourcePool=memorizedPool.length>0?memorizedPool:words;
+    if(sourcePool.length===0){ alert('먼저 단어를 등록하고 암기해야 카드를 뽑을 수 있어요!'); return; }
+    gems-=GACHA_COST;
+    const target=sourcePool[Math.floor(Math.random()*sourcePool.length)];
+    const rarity=rollRarity();
+    const already=collectedCards.find(c=>c.wordId===target.id);
+    let bonusGems=0;
+    if(already){
+        bonusGems=5;gems+=bonusGems;
+    } else {
+        collectedCards.push({wordId:target.id,word:target.word,meanings:target.meanings,tier:rarity.tier,emoji:getCardEmoji(target.word),obtainedAt:Date.now()});
+    }
+    saveData();
+    showGachaReveal(target,rarity,!!already,bonusGems);
+}
+function showGachaReveal(word,rarity,isDuplicate,bonusGems){
+    const container=document.getElementById('growthTabContent');if(!container)return;
+    const emoji=getCardEmoji(word.word);
+    playFanfareSound();
+    container.innerHTML=`
+    <div class="text-center py-6 relative">
+        <div class="inline-block bg-gradient-to-br ${rarity.color} text-white rounded-3xl p-6 shadow-xl animate-fade-in">
+            <div class="text-6xl mb-2">${emoji}</div>
+            <div class="text-xl font-black">${escapeHtml(word.word)}</div>
+            <div class="text-xs opacity-80 mt-1">${escapeHtml(word.meanings.join(' / '))}</div>
+            <div class="mt-3 inline-block bg-white/20 px-3 py-1 rounded-full text-[11px] font-black">${rarity.label}</div>
+        </div>
+        <p class="text-xs text-slate-500 mt-4">${isDuplicate?`이미 모은 카드예요! 대신 젬 +${bonusGems}`:'새 카드를 획득했어요! 🎉'}</p>
+        <button onclick="renderCollectionTab()" class="mt-4 bg-indigo-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold">확인</button>
+    </div>`;
+    burstConfetti(container);
+    updateGemsDisplay();
+}
+
 function saveData(){
     localStorage.setItem(LS_TREE,JSON.stringify(folderTree));
     localStorage.setItem(LS_WORDS,JSON.stringify(words));
     localStorage.setItem('smart_active_folder_id',activeFolderId);
-    if(window._saveToFirestore)window._saveToFirestore(folderTree,words);
+    localStorage.setItem(LS_GEMS,String(gems));
+    localStorage.setItem(LS_CARDS,JSON.stringify(collectedCards));
+    if(window._saveToFirestore)window._saveToFirestore(folderTree,words,gems,collectedCards);
 }
 
 // ── 뷰 전환 ──
@@ -534,10 +707,12 @@ function selectView(view){
     currentView=view;
     const statsItem=document.getElementById('statsMenuItem');
     const reviewItem=document.getElementById('reviewMenuItem');
-    [statsItem,reviewItem].forEach(el=>{ if(!el)return; el.classList.remove('bg-indigo-700','text-white'); el.classList.add('text-slate-400'); });
+    const growthItem=document.getElementById('growthMenuItem');
+    [statsItem,reviewItem,growthItem].forEach(el=>{ if(!el)return; el.classList.remove('bg-indigo-700','text-white'); el.classList.add('text-slate-400'); });
     document.getElementById('wordsView').classList.add('hidden');
     document.getElementById('statsView').classList.add('hidden');
     document.getElementById('reviewView').classList.add('hidden');
+    document.getElementById('growthView').classList.add('hidden');
     if(view==='stats'){
         statsItem.classList.add('bg-indigo-700','text-white');
         statsItem.classList.remove('text-slate-400');
@@ -548,6 +723,11 @@ function selectView(view){
         reviewItem.classList.remove('text-slate-400');
         document.getElementById('reviewView').classList.remove('hidden');
         renderReviewView();
+    } else if(view==='growth'){
+        growthItem.classList.add('bg-indigo-700','text-white');
+        growthItem.classList.remove('text-slate-400');
+        document.getElementById('growthView').classList.remove('hidden');
+        renderGrowthView();
     } else {
         document.getElementById('wordsView').classList.remove('hidden');
         renderWords();
@@ -558,6 +738,7 @@ function selectView(view){
 function renderCurrentView(){
     if(currentView==='stats')renderStats();
     else if(currentView==='review')renderReviewView();
+    else if(currentView==='growth')renderGrowthView();
     else renderWords();
 }
 
@@ -610,6 +791,7 @@ function renderFolders(){
     }).join('');
     updateFolderName();
     updateReviewBadge();
+    updateGemsDisplay();
 }
 
 function updateFolderName(){
@@ -627,10 +809,13 @@ function selectFolderView(id,e){
     document.getElementById('wordsView').classList.remove('hidden');
     document.getElementById('statsView').classList.add('hidden');
     document.getElementById('reviewView').classList.add('hidden');
+    document.getElementById('growthView').classList.add('hidden');
     const si=document.getElementById('statsMenuItem');
     si.classList.remove('bg-indigo-700','text-white'); si.classList.add('text-slate-400');
     const ri=document.getElementById('reviewMenuItem');
     if(ri){ri.classList.remove('bg-indigo-700','text-white'); ri.classList.add('text-slate-400');}
+    const gi=document.getElementById('growthMenuItem');
+    if(gi){gi.classList.remove('bg-indigo-700','text-white'); gi.classList.add('text-slate-400');}
     renderFolders(); renderWords();
     if(window.innerWidth<768) closeSidebar();
 }
@@ -942,7 +1127,7 @@ const MOLE_HOLE_COUNT=9;
 let recallRunning=false, recallScore=0, recallCombo=0, recallBestCombo=0, recallGameToken=0;
 let recallAllWords=[], recallCompletedIds=new Set(), recallCarryOverIds=[], recallIntroducedIds=new Set();
 let recallRound=1, recallRoundWords=[], recallRoundIndex=0, recallRoundAnsweredIds=[], recallTimeLeft=0, recallTimerInterval=null;
-let recallCurrentTarget=null, recallHintsUsed=0, recallRevealedCount=0;
+let recallCurrentTarget=null, recallHintsUsed=0, recallRevealedCount=0, recallTyped='';
 const FALLBACK_WORDS=['apple','banana','computer','freedom','journey','elephant','bicycle','mountain','holiday','kitchen','umbrella','pencil','garden','picture','airport'];
 
 let baseStudyList=[];// 원본 단어 목록 (모드 전환 시 재확장용)
@@ -1623,7 +1808,8 @@ function handleMatchRoundTimeUp(){
 function showMatchComplete(){
     if(matchGameToken!==activeGameSession)return;
     const canvas=document.getElementById('gameCenterCanvas');
-    canvas.innerHTML=`<div class="text-center relative"><i class="fa-solid fa-trophy text-5xl text-amber-400 mb-4"></i><p class="text-2xl font-black text-slate-800">전체 단어 짝맞추기 완료! 🎉</p><p class="text-slate-500 mt-2 text-sm">총 ${matchRound}라운드 · ${matchAllWords.length}개 단어 · 시도 ${matchAttempts}회</p><button onclick="startGame('match')" class="mt-5 bg-indigo-600 text-white px-6 py-2.5 rounded-xl font-bold text-sm">다시 하기</button></div>`;
+    const gained=awardGems(matchAllWords.length);
+    canvas.innerHTML=`<div class="text-center relative"><i class="fa-solid fa-trophy text-5xl text-amber-400 mb-4"></i><p class="text-2xl font-black text-slate-800">전체 단어 짝맞추기 완료! 🎉</p><p class="text-slate-500 mt-2 text-sm">총 ${matchRound}라운드 · ${matchAllWords.length}개 단어 · 시도 ${matchAttempts}회</p><p class="text-sky-600 text-xs font-extrabold mt-1"><i class="fa-solid fa-gem"></i> +${gained} 젬 획득!</p><button onclick="startGame('match')" class="mt-5 bg-indigo-600 text-white px-6 py-2.5 rounded-xl font-bold text-sm">다시 하기</button></div>`;
     playFanfareSound();burstConfetti(canvas);setTimeout(()=>burstConfetti(canvas),300);
 }
 
@@ -1754,7 +1940,8 @@ function endSpeedGame(){
     speedRunning=false;
     const rank=getSpeedRank(speedScore);
     const canvas=document.getElementById('gameCenterCanvas');
-    canvas.innerHTML=`<div class="text-center relative"><div class="text-5xl mb-3">${rank.emoji}</div><p class="text-2xl font-black text-slate-800">${rank.label}</p><p class="text-slate-500 mt-2 text-sm">전체 ${speedAllWords.length}개 단어 완료 · 총 ${speedRound}라운드 · 점수 ${speedScore}점 · 최고 콤보 ${speedBestCombo}</p><button onclick="startGame('speed')" class="mt-5 bg-amber-500 text-white px-6 py-2.5 rounded-xl font-bold text-sm">다시 하기</button></div>`;
+    const gained=awardGems(Math.round(speedScore/10));
+    canvas.innerHTML=`<div class="text-center relative"><div class="text-5xl mb-3">${rank.emoji}</div><p class="text-2xl font-black text-slate-800">${rank.label}</p><p class="text-slate-500 mt-2 text-sm">전체 ${speedAllWords.length}개 단어 완료 · 총 ${speedRound}라운드 · 점수 ${speedScore}점 · 최고 콤보 ${speedBestCombo}</p><p class="text-sky-600 text-xs font-extrabold mt-1"><i class="fa-solid fa-gem"></i> +${gained} 젬 획득!</p><button onclick="startGame('speed')" class="mt-5 bg-amber-500 text-white px-6 py-2.5 rounded-xl font-bold text-sm">다시 하기</button></div>`;
     playFanfareSound();burstConfetti(canvas);setTimeout(()=>burstConfetti(canvas),300);
 }
 function getSpeedRank(score){
@@ -1866,7 +2053,8 @@ function endMoleGame(){
     if(moleGameToken!==activeGameSession)return;
     const rank=getSpeedRank(moleScore);
     const canvas=document.getElementById('gameCenterCanvas');
-    canvas.innerHTML=`<div class="text-center relative"><div class="text-5xl mb-3">${rank.emoji}</div><p class="text-2xl font-black text-slate-800">${rank.label}</p><p class="text-slate-500 mt-2 text-sm">점수 ${moleScore}점 · 최고 콤보 ${moleBestCombo}</p><button onclick="startGame('mole')" class="mt-5 bg-amber-600 text-white px-6 py-2.5 rounded-xl font-bold text-sm">다시 하기</button></div>`;
+    const gained=awardGems(Math.round(moleScore/10));
+    canvas.innerHTML=`<div class="text-center relative"><div class="text-5xl mb-3">${rank.emoji}</div><p class="text-2xl font-black text-slate-800">${rank.label}</p><p class="text-slate-500 mt-2 text-sm">점수 ${moleScore}점 · 최고 콤보 ${moleBestCombo}</p><p class="text-sky-600 text-xs font-extrabold mt-1"><i class="fa-solid fa-gem"></i> +${gained} 젬 획득!</p><button onclick="startGame('mole')" class="mt-5 bg-amber-600 text-white px-6 py-2.5 rounded-xl font-bold text-sm">다시 하기</button></div>`;
     playFanfareSound();burstConfetti(canvas);
 }
 
@@ -1916,6 +2104,7 @@ function startRecallTimerTick(){
         if(recallTimeLeft<=0){clearInterval(recallTimerInterval);handleRecallRoundTimeUp();}
     },1000);
 }
+const RECALL_KEY_ROWS=[['Q','W','E','R','T','Y','U','I','O','P'],['A','S','D','F','G','H','J','K','L'],['Z','X','C','V','B','N','M']];
 function spawnRecallQuestion(){
     if(!recallRunning||recallGameToken!==activeGameSession)return;
     if(recallRoundIndex>=recallRoundWords.length){
@@ -1924,7 +2113,7 @@ function spawnRecallQuestion(){
         return;
     }
     recallCurrentTarget=recallRoundWords[recallRoundIndex];
-    recallHintsUsed=0;recallRevealedCount=0;
+    recallHintsUsed=0;recallRevealedCount=0;recallTyped='';
     renderRecallGame();
 }
 function renderRecallGame(){
@@ -1933,6 +2122,7 @@ function renderRecallGame(){
     const totalWords=recallAllWords.length,doneWords=recallCompletedIds.size;
     const word=recallCurrentTarget.word;
     const blanks=word.split('').map((ch,i)=>i<recallRevealedCount?ch.toUpperCase():'_').join(' ');
+    const keyRowsHtml=RECALL_KEY_ROWS.map(row=>`<div class="flex justify-center gap-1">${row.map(l=>`<button onclick="recallKeyPress('${l}')" class="bg-slate-100 hover:bg-indigo-100 active:scale-95 text-slate-800 font-bold text-xs sm:text-sm w-7 sm:w-9 py-2.5 rounded-lg transition">${l}</button>`).join('')}</div>`).join('');
     canvas.innerHTML=`
     <div class="w-full max-w-md">
         <div class="flex items-center justify-between mb-1 text-xs font-bold flex-wrap gap-y-1">
@@ -1942,33 +2132,47 @@ function renderRecallGame(){
         </div>
         <div class="text-center mb-2 h-4"><span class="text-xs font-black ${recallCombo>=2?'text-amber-500':'text-transparent'}">🔥 콤보 x${recallCombo}</span></div>
         <div class="text-lg font-black text-slate-800 bg-slate-100 rounded-2xl px-4 py-4 mb-3 text-center">${escapeHtml(recallCurrentTarget.meanings.join(' / '))}</div>
-        <div class="text-center font-mono text-xl sm:text-2xl font-black tracking-widest text-indigo-700 mb-4 break-all">${blanks}</div>
-        <div class="flex gap-2 max-w-sm mx-auto mb-2">
-            <input type="text" id="recallInp" placeholder="정답 입력" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" onkeydown="if(event.key==='Enter')checkRecallAnswer()" class="flex-1 bg-white border border-slate-300 rounded-2xl px-4 py-3 text-center text-lg font-bold text-slate-900 focus:outline-none focus:border-indigo-600">
-            <button onclick="checkRecallAnswer()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-5 py-3 rounded-2xl text-sm transition">확인</button>
+        <div class="text-center font-mono text-xl sm:text-2xl font-black tracking-widest text-indigo-700 mb-3 break-all">${blanks}</div>
+        <div id="recallControls">
+            <div id="recallTypedDisplay" class="bg-white border-2 border-slate-300 rounded-2xl px-4 py-3 text-center text-lg font-bold text-slate-900 min-h-[52px] tracking-widest mb-2 max-w-sm mx-auto">${recallTyped?escapeHtml(recallTyped.toUpperCase()):'<span class="text-slate-300">알파벳을 눌러 입력하세요</span>'}</div>
+            <div class="space-y-1.5 mb-3">${keyRowsHtml}</div>
+            <div class="flex gap-2 max-w-sm mx-auto mb-2">
+                <button onclick="recallBackspace()" class="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-2.5 rounded-xl text-sm transition"><i class="fa-solid fa-delete-left"></i> 지우기</button>
+                <button onclick="checkRecallAnswer()" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl text-sm transition">확인</button>
+            </div>
+            <div class="text-center"><button onclick="useRecallHint()" class="text-xs font-bold text-amber-600 hover:text-amber-700 transition"><i class="fa-solid fa-lightbulb"></i> 힌트 보기 (점수 감소)</button></div>
         </div>
-        <div class="text-center"><button onclick="useRecallHint()" class="text-xs font-bold text-amber-600 hover:text-amber-700 transition"><i class="fa-solid fa-lightbulb"></i> 힌트 보기 (점수 감소)</button></div>
         <div id="recallFb" class="mt-3 text-center text-sm font-extrabold min-h-[24px]"></div>
     </div>`;
-    setTimeout(()=>document.getElementById('recallInp')?.focus(),50);
+}
+function updateRecallTypedDisplay(){
+    const el=document.getElementById('recallTypedDisplay');
+    if(el)el.innerHTML=recallTyped?escapeHtml(recallTyped.toUpperCase()):'<span class="text-slate-300">알파벳을 눌러 입력하세요</span>';
+}
+function recallKeyPress(letter){
+    if(!recallRunning||recallGameToken!==activeGameSession)return;
+    recallTyped+=letter.toLowerCase();
+    updateRecallTypedDisplay();
+}
+function recallBackspace(){
+    if(!recallRunning||recallGameToken!==activeGameSession)return;
+    recallTyped=recallTyped.slice(0,-1);
+    updateRecallTypedDisplay();
 }
 function useRecallHint(){
     if(!recallRunning||recallGameToken!==activeGameSession)return;
     const item=recallCurrentTarget;if(!item)return;
     if(recallRevealedCount>=item.word.length)return;
-    const typed=document.getElementById('recallInp')?.value||'';
     recallRevealedCount++;recallHintsUsed++;
     renderRecallGame();
-    const inp=document.getElementById('recallInp');
-    if(inp){inp.value=typed;inp.focus();inp.selectionStart=inp.selectionEnd=typed.length;}
 }
 function checkRecallAnswer(){
     if(!recallRunning||recallGameToken!==activeGameSession)return;
     const item=recallCurrentTarget;if(!item)return;
-    const inp=document.getElementById('recallInp');
-    const u=(inp?.value||'').trim().toLowerCase();
+    const u=recallTyped.trim().toLowerCase();
     if(!u)return;
-    if(inp)inp.disabled=true;
+    const controls=document.getElementById('recallControls');
+    if(controls)controls.classList.add('opacity-50','pointer-events-none');
     clearInterval(recallTimerInterval);
     recallRoundAnsweredIds.push(item.id);
     const fb=document.getElementById('recallFb');
@@ -2025,7 +2229,8 @@ function endRecallGame(){
     recallRunning=false;
     const rank=getSpeedRank(recallScore);
     const canvas=document.getElementById('gameCenterCanvas');
-    canvas.innerHTML=`<div class="text-center relative"><div class="text-5xl mb-3">${rank.emoji}</div><p class="text-2xl font-black text-slate-800">${rank.label}</p><p class="text-slate-500 mt-2 text-sm">전체 ${recallAllWords.length}개 단어 완료 · 총 ${recallRound}라운드 · 점수 ${recallScore}점 · 최고 콤보 ${recallBestCombo}</p><button onclick="startGame('recall')" class="mt-5 bg-indigo-600 text-white px-6 py-2.5 rounded-xl font-bold text-sm">다시 하기</button></div>`;
+    const gained=awardGems(Math.round(recallScore/10));
+    canvas.innerHTML=`<div class="text-center relative"><div class="text-5xl mb-3">${rank.emoji}</div><p class="text-2xl font-black text-slate-800">${rank.label}</p><p class="text-slate-500 mt-2 text-sm">전체 ${recallAllWords.length}개 단어 완료 · 총 ${recallRound}라운드 · 점수 ${recallScore}점 · 최고 콤보 ${recallBestCombo}</p><p class="text-sky-600 text-xs font-extrabold mt-1"><i class="fa-solid fa-gem"></i> +${gained} 젬 획득!</p><button onclick="startGame('recall')" class="mt-5 bg-indigo-600 text-white px-6 py-2.5 rounded-xl font-bold text-sm">다시 하기</button></div>`;
     playFanfareSound();burstConfetti(canvas);setTimeout(()=>burstConfetti(canvas),300);
 }
 
