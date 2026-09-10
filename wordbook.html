@@ -943,7 +943,7 @@ const MOLE_HOLE_COUNT=9;
 let recallRunning=false, recallScore=0, recallCombo=0, recallBestCombo=0, recallGameToken=0;
 let recallAllWords=[], recallCompletedIds=new Set(), recallCarryOverIds=[], recallIntroducedIds=new Set();
 let recallRound=1, recallRoundWords=[], recallRoundIndex=0, recallRoundAnsweredIds=[], recallTimeLeft=0, recallTimerInterval=null;
-let recallCurrentTarget=null, recallHintsUsed=0, recallRevealedCount=0, recallTyped='';
+let recallCurrentTarget=null, recallHintsUsed=0, recallRevealedCount=0, recallTyped='', recallInputMode='keyboard';
 const FALLBACK_WORDS=['apple','banana','computer','freedom','journey','elephant','bicycle','mountain','holiday','kitchen','umbrella','pencil','garden','picture','airport'];
 
 let baseStudyList=[];// 원본 단어 목록 (모드 전환 시 재확장용)
@@ -1941,6 +1941,19 @@ function renderRecallGame(){
         return letterSeen<=recallRevealedCount?ch.toUpperCase():'_';
     }).join(' ');
     const keyRowsHtml=RECALL_KEY_ROWS.map(row=>`<div class="flex justify-center gap-1">${row.map(l=>`<button onclick="recallKeyPress('${l}')" class="bg-slate-100 hover:bg-indigo-100 active:scale-95 text-slate-800 font-bold text-xs sm:text-sm w-7 sm:w-9 py-2.5 rounded-lg transition">${l}</button>`).join('')}</div>`).join('');
+    const controlsHtml=recallInputMode==='type'
+        ?`<div class="flex gap-2 max-w-sm mx-auto mb-2">
+            <input type="text" id="recallInp" placeholder="정답 입력" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" onkeydown="if(event.key==='Enter')checkRecallAnswer()" class="flex-1 bg-white border border-slate-300 rounded-2xl px-4 py-3 text-center text-lg font-bold text-slate-900 focus:outline-none focus:border-indigo-600">
+            <button onclick="checkRecallAnswer()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-5 py-3 rounded-2xl text-sm transition">확인</button>
+        </div>
+        <div class="text-center"><button onclick="useRecallHint()" class="text-xs font-bold text-amber-600 hover:text-amber-700 transition"><i class="fa-solid fa-lightbulb"></i> 힌트 보기 (점수 감소)</button></div>`
+        :`<div id="recallTypedDisplay" class="bg-white border-2 border-slate-300 rounded-2xl px-4 py-3 text-center text-lg font-bold text-slate-900 min-h-[52px] tracking-widest mb-2 max-w-sm mx-auto">${recallTyped?escapeHtml(recallTyped.toUpperCase()):'<span class="text-slate-300">알파벳을 눌러 입력하세요</span>'}</div>
+        <div class="space-y-1.5 mb-3">${keyRowsHtml}</div>
+        <div class="flex gap-2 max-w-sm mx-auto mb-2">
+            <button onclick="recallBackspace()" class="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-2.5 rounded-xl text-sm transition"><i class="fa-solid fa-delete-left"></i> 지우기</button>
+            <button onclick="checkRecallAnswer()" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl text-sm transition">확인</button>
+        </div>
+        <div class="text-center"><button onclick="useRecallHint()" class="text-xs font-bold text-amber-600 hover:text-amber-700 transition"><i class="fa-solid fa-lightbulb"></i> 힌트 보기 (점수 감소)</button></div>`;
     canvas.innerHTML=`
     <div class="w-full max-w-md">
         <div class="flex items-center justify-between mb-1 text-xs font-bold flex-wrap gap-y-1">
@@ -1948,20 +1961,20 @@ function renderRecallGame(){
             <span class="text-slate-500">라운드 ${recallRound}</span>
             <span class="text-slate-500">전체 진행: ${doneWords} / ${totalWords}</span>
         </div>
+        <div class="text-center mb-1"><button onclick="toggleRecallInputMode()" class="bg-slate-100 hover:bg-slate-200 text-slate-600 px-2.5 py-1 rounded-lg text-[10px] font-bold transition"><i class="fa-solid fa-${recallInputMode==='type'?'keyboard':'hand-pointer'}"></i> ${recallInputMode==='type'?'직접입력':'가상키보드'} (탭하여 전환)</button></div>
         <div class="text-center mb-2 h-4"><span class="text-xs font-black ${recallCombo>=2?'text-amber-500':'text-transparent'}">🔥 콤보 x${recallCombo}</span></div>
         <div class="text-lg font-black text-slate-800 bg-slate-100 rounded-2xl px-4 py-4 mb-3 text-center">${escapeHtml(recallCurrentTarget.meanings.join(' / '))}</div>
         <div class="text-center font-mono text-xl sm:text-2xl font-black tracking-widest text-indigo-700 mb-3 break-all">${blanks}</div>
-        <div id="recallControls">
-            <div id="recallTypedDisplay" class="bg-white border-2 border-slate-300 rounded-2xl px-4 py-3 text-center text-lg font-bold text-slate-900 min-h-[52px] tracking-widest mb-2 max-w-sm mx-auto">${recallTyped?escapeHtml(recallTyped.toUpperCase()):'<span class="text-slate-300">알파벳을 눌러 입력하세요</span>'}</div>
-            <div class="space-y-1.5 mb-3">${keyRowsHtml}</div>
-            <div class="flex gap-2 max-w-sm mx-auto mb-2">
-                <button onclick="recallBackspace()" class="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-2.5 rounded-xl text-sm transition"><i class="fa-solid fa-delete-left"></i> 지우기</button>
-                <button onclick="checkRecallAnswer()" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl text-sm transition">확인</button>
-            </div>
-            <div class="text-center"><button onclick="useRecallHint()" class="text-xs font-bold text-amber-600 hover:text-amber-700 transition"><i class="fa-solid fa-lightbulb"></i> 힌트 보기 (점수 감소)</button></div>
-        </div>
+        <div id="recallControls">${controlsHtml}</div>
         <div id="recallFb" class="mt-3 text-center text-sm font-extrabold min-h-[24px]"></div>
     </div>`;
+    if(recallInputMode==='type')setTimeout(()=>document.getElementById('recallInp')?.focus(),50);
+}
+function toggleRecallInputMode(){
+    if(!recallRunning||recallGameToken!==activeGameSession)return;
+    recallInputMode=recallInputMode==='keyboard'?'type':'keyboard';
+    recallTyped='';
+    renderRecallGame();
 }
 function updateRecallTypedDisplay(){
     const el=document.getElementById('recallTypedDisplay');
@@ -1996,7 +2009,8 @@ function useRecallHint(){
 function checkRecallAnswer(){
     if(!recallRunning||recallGameToken!==activeGameSession)return;
     const item=recallCurrentTarget;if(!item)return;
-    const u=recallTyped.trim().toLowerCase();
+    const raw=recallInputMode==='type'?(document.getElementById('recallInp')?.value||''):recallTyped;
+    const u=raw.trim().toLowerCase();
     if(!u)return;
     const controls=document.getElementById('recallControls');
     if(controls)controls.classList.add('opacity-50','pointer-events-none');
