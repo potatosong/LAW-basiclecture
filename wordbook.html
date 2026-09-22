@@ -79,6 +79,15 @@
     </div>
 </div>
 
+<div id="moveFolderModal" class="hidden fixed inset-0 bg-black/60 z-[150] flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm">
+        <h3 class="font-extrabold text-slate-800 mb-1">폴더 이동</h3>
+        <p id="moveFolderLabel" class="text-xs text-slate-500 mb-4"></p>
+        <div id="moveFolderDestList" class="space-y-1.5 max-h-64 overflow-y-auto"></div>
+        <button onclick="closeMoveFolderModal()" class="mt-4 w-full bg-slate-100 hover:bg-slate-200 text-slate-700 py-2.5 rounded-xl text-sm font-bold transition">취소</button>
+    </div>
+</div>
+
 <div id="worksheetModal" class="hidden fixed inset-0 bg-black/60 z-[150] flex items-center justify-center p-4">
     <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md">
         <h3 class="font-extrabold text-slate-800 mb-1">학습지 생성</h3>
@@ -402,7 +411,7 @@ const LS_TREE='smart_folders_tree_v3', LS_WORDS='smart_words_pro_v3';
 let folderTree=[], words=[], activeFolderId='';
 let sortMode='newest', isBlurMode=false, isHideMemorized=false, isHideExtra=false;
 let editingWordId=null, currentActiveWord='';
-let collapsedFolders=new Set(), movingWordId=null;
+let collapsedFolders=new Set(), movingWordId=null, movingFolderId=null;
 let currentView='words';
 let reviewWordsCache=[], reviewFilter='smart';
 const REVIEW_FILTER_DESC={
@@ -587,6 +596,7 @@ function renderFolders(){
                 onclick="selectFolderView('${child.id}',event)">
                 <div class="flex items-center gap-2 truncate"><i class="fa-solid fa-file-lines text-xs ${ca?'text-white':'text-slate-500'}"></i><span class="text-xs truncate">${child.name}</span></div>
                 <div class="flex items-center gap-0.5 shrink-0">
+                    <button onclick="openMoveFolderModal('${child.id}',event)" class="text-slate-500 hover:text-emerald-400 p-0.5" title="폴더 이동"><i class="fa-solid fa-arrows-up-down-left-right text-[9px]"></i></button>
                     <button onclick="renameFolder('${child.id}',event)" class="text-slate-500 hover:text-indigo-400 p-0.5"><i class="fa-solid fa-pen text-[9px]"></i></button>
                     <button onclick="deleteFolder('${child.id}',event)" class="text-slate-500 hover:text-rose-400 p-0.5"><i class="fa-solid fa-trash-can text-[9px]"></i></button>
                 </div>
@@ -602,6 +612,7 @@ function renderFolders(){
                 <div class="flex items-center gap-0.5 shrink-0">
                     ${children.length>0?`<button onclick="toggleFolderCollapse('${root.id}',event)" class="text-slate-400 hover:text-white p-0.5"><i class="fa-solid fa-chevron-${isCollapsed?'right':'down'} text-[9px]"></i></button>`:''}
                     <button onclick="addSubFolder('${root.id}',event)" class="text-slate-400 hover:text-white p-0.5"><i class="fa-solid fa-folder-plus text-xs"></i></button>
+                    <button onclick="openMoveFolderModal('${root.id}',event)" class="text-slate-400 hover:text-emerald-400 p-0.5" title="폴더 순서 이동"><i class="fa-solid fa-arrows-up-down-left-right text-[9px]"></i></button>
                     <button onclick="renameFolder('${root.id}',event)" class="text-slate-500 hover:text-indigo-400 p-0.5"><i class="fa-solid fa-pen text-[9px]"></i></button>
                     <button onclick="deleteFolder('${root.id}',event)" class="text-slate-500 hover:text-rose-400 p-0.5"><i class="fa-solid fa-trash-can text-[9px]"></i></button>
                 </div>
@@ -641,6 +652,49 @@ function addRootFolder(){const n=prompt("새 메인 폴더명:");if(!n?.trim())r
 function addSubFolder(pid,e){e.stopPropagation();const p=folderTree.find(f=>f.id===pid);const n=prompt(`[ ${p.name} ] 하위 폴더명:`);if(!n?.trim())return;const id='f_'+Date.now();folderTree.push({id,name:n.trim(),parentId:pid});activeFolderId=id;collapsedFolders.delete(pid);saveData();renderFolders();renderWords();}
 function renameFolder(id,e){e.stopPropagation();const f=folderTree.find(x=>x.id===id);if(!f)return;const n=prompt("새 폴더 이름:",f.name);if(n?.trim()&&n.trim()!==f.name){f.name=n.trim();saveData();renderFolders();}}
 function deleteFolder(id,e){e.stopPropagation();const all=[id,...folderTree.filter(f=>f.parentId===id).map(f=>f.id)];if(confirm("폴더와 내부 데이터를 삭제합니다.?")){folderTree=folderTree.filter(f=>!all.includes(f.id));words=words.filter(w=>!all.includes(w.folderId));if(all.includes(activeFolderId))activeFolderId=folderTree[0]?.id||'';saveData();renderFolders();renderWords();}}
+
+// ── 폴더 이동(순서 변경 · 다른 폴더로 이동) ──
+function openMoveFolderModal(id,e){
+    e.stopPropagation();
+    const folder=folderTree.find(f=>f.id===id);if(!folder)return;
+    movingFolderId=id;
+    document.getElementById('moveFolderLabel').textContent=`"${folder.name}" 폴더 이동`;
+    const siblings=folderTree.filter(f=>f.parentId===folder.parentId);
+    const idx=siblings.indexOf(folder);
+    let html=`<div class="flex gap-2 mb-3">
+        <button onclick="reorderFolder('${id}',-1)" ${idx<=0?'disabled':''} class="flex-1 bg-slate-50 hover:bg-indigo-50 disabled:opacity-40 disabled:pointer-events-none text-slate-700 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1"><i class="fa-solid fa-arrow-up"></i> 위로</button>
+        <button onclick="reorderFolder('${id}',1)" ${idx>=siblings.length-1?'disabled':''} class="flex-1 bg-slate-50 hover:bg-indigo-50 disabled:opacity-40 disabled:pointer-events-none text-slate-700 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1"><i class="fa-solid fa-arrow-down"></i> 아래로</button>
+    </div>`;
+    if(folder.parentId!==null){
+        const roots=folderTree.filter(f=>f.parentId===null&&f.id!==id);
+        html+=`<div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 mt-4">다른 폴더로 이동</div>`;
+        html+=`<button onclick="moveFolderTo(null)" class="w-full text-left px-3 py-2.5 rounded-xl text-sm font-medium transition flex items-center gap-2 bg-slate-50 hover:bg-indigo-50 text-slate-700 mb-1.5"><i class="fa-solid fa-folder text-indigo-400"></i><span>최상위 폴더로 독립</span></button>`;
+        html+=roots.map(r=>{
+            const isCur=r.id===folder.parentId;
+            return `<button onclick="moveFolderTo('${r.id}')" class="w-full text-left px-3 py-2.5 rounded-xl text-sm font-medium transition flex items-center gap-2 mb-1.5 ${isCur?'bg-indigo-600 text-white':'bg-slate-50 hover:bg-indigo-50 text-slate-700'}"><i class="fa-solid fa-folder${isCur?'-open':''}"></i><span>${escapeHtml(r.name)}</span>${isCur?'<span class="ml-auto text-xs">현재</span>':''}</button>`;
+        }).join('');
+    }
+    document.getElementById('moveFolderDestList').innerHTML=html;
+    document.getElementById('moveFolderModal').classList.remove('hidden');
+}
+function reorderFolder(id,direction){
+    const folder=folderTree.find(f=>f.id===id);if(!folder)return;
+    const siblings=folderTree.filter(f=>f.parentId===folder.parentId);
+    const idx=siblings.indexOf(folder);
+    const swapWith=siblings[idx+direction];
+    if(!swapWith)return;
+    const i1=folderTree.indexOf(folder),i2=folderTree.indexOf(swapWith);
+    [folderTree[i1],folderTree[i2]]=[folderTree[i2],folderTree[i1]];
+    saveData();renderFolders();
+    openMoveFolderModal(id,{stopPropagation:()=>{}});
+}
+function moveFolderTo(parentId){
+    const folder=folderTree.find(f=>f.id===movingFolderId);if(!folder)return;
+    folder.parentId=parentId;
+    saveData();renderFolders();renderWords();
+    closeMoveFolderModal();
+}
+function closeMoveFolderModal(){document.getElementById('moveFolderModal').classList.add('hidden');movingFolderId=null;}
 
 // ── 단어 이동 ──
 function dropWordToFolder(folderId,e){
