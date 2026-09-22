@@ -63,7 +63,6 @@
 <body class="font-sans text-slate-800 bg-slate-100 antialiased">
 
 <div id="overlay" onclick="closeSidebar()"></div>
-<input type="file" id="importFileInput" accept=".json" onchange="importJsonFile(event)" class="hidden">
 
 <div id="syncToast" class="hidden fixed top-4 left-1/2 -translate-x-1/2 z-[200] bg-slate-900 text-white text-xs font-bold px-4 py-2 rounded-full shadow-xl flex items-center gap-2">
     <span id="syncDot" class="w-2 h-2 rounded-full bg-yellow-400"></span>
@@ -201,14 +200,6 @@
             <button onclick="openBulkAddModal()" class="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs py-2 rounded-xl font-medium transition border border-slate-700 flex items-center justify-center gap-1.5">
                 <i class="fa-solid fa-wand-magic-sparkles text-amber-400"></i> AI로 단어 일괄 추가
             </button>
-            <div class="grid grid-cols-2 gap-1.5">
-                <button onclick="exportJsonFile()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs py-2 rounded-xl font-medium transition border border-slate-700 flex items-center justify-center gap-1">
-                    <i class="fa-solid fa-download text-indigo-400"></i> 백업
-                </button>
-                <button onclick="document.getElementById('importFileInput').click()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs py-2 rounded-xl font-medium transition border border-slate-700 flex items-center justify-center gap-1">
-                    <i class="fa-solid fa-upload text-teal-400"></i> 복원
-                </button>
-            </div>
             <button onclick="setGeminiKey()" class="hidden w-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-amber-400 text-xs py-2 rounded-xl font-medium transition border border-slate-700 flex items-center justify-center gap-1.5">
                 <i class="fa-solid fa-key text-amber-400"></i> Gemini API 키 설정
             </button>
@@ -2137,8 +2128,6 @@ function playAllWords(){const list=getWordsForFolder();if(list.length===0){alert
 function stopAllWords(){isPlayingAll=false;window.speechSynthesis?.cancel();updatePlayUI(false);}
 function updatePlayUI(playing){const b=document.getElementById('playAllBtn');if(!b)return;if(playing){b.innerHTML=`<i class="fa-solid fa-stop text-xs"></i> 멈춤`;b.className="bg-rose-600 hover:bg-rose-700 text-white px-2.5 py-1.5 rounded-lg text-[11px] font-bold shadow animate-pulse whitespace-nowrap shrink-0";b.setAttribute('onclick','stopAllWords()');}else{b.innerHTML=`<i class="fa-solid fa-play text-xs"></i> 연속발음`;b.className="bg-teal-600 hover:bg-teal-700 text-white px-2.5 py-1.5 rounded-lg text-[11px] font-bold shadow whitespace-nowrap shrink-0";b.setAttribute('onclick','playAllWords()');}}
 
-function exportJsonFile(){const blob=new Blob([JSON.stringify({folderTree,words},null,2)],{type:"application/json"});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`wordbook_${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(url);}
-function importJsonFile(e){const file=e.target.files[0];if(!file)return;const reader=new FileReader();reader.onload=(ev)=>{try{const res=JSON.parse(ev.target.result);if(res.folderTree&&res.words){folderTree=res.folderTree;words=res.words;saveData();renderFolders();renderWords();alert("복원 성공!");}}catch(err){alert("파일 오류");}e.target.value='';};reader.readAsText(file);}
 
 // ── AI로 단어 일괄 추가 ──
 const BULK_ADD_PROMPT_TEMPLATE=`다음 사진 속 영단어장 페이지의 내용을 인식해서, 아래 JSON 형식으로만 응답해줘. 다른 설명 없이 JSON 배열만 출력해줘.
