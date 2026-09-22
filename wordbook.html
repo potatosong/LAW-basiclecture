@@ -190,7 +190,7 @@
                     <i class="fa-solid fa-folder-plus"></i> 추가
                 </button>
             </div>
-            <ul id="folderTreeArea" class="space-y-1"></ul>
+            <ul id="folderTreeArea" class="space-y-1" ondragover="event.preventDefault()" ondrop="handleRootAreaDrop(event)"></ul>
         </div>
 
         <div class="p-3 border-t border-slate-800 space-y-2 shrink-0">
@@ -402,7 +402,7 @@ const LS_TREE='smart_folders_tree_v3', LS_WORDS='smart_words_pro_v3';
 let folderTree=[], words=[], activeFolderId='';
 let sortMode='newest', isBlurMode=false, isHideMemorized=false, isHideExtra=false;
 let editingWordId=null, currentActiveWord='';
-let collapsedFolders=new Set(), movingWordId=null, movingFolderId=null;
+let collapsedFolders=new Set(), movingWordId=null, movingFolderId=null, draggingFolderId=null;
 let currentView='words';
 let reviewWordsCache=[], reviewFilter='smart';
 const REVIEW_FILTER_DESC={
@@ -499,9 +499,7 @@ function renderReviewView(){
     }
     const now=Date.now(), DAY=86400000;
     container.innerHTML=reviewWordsCache.map(w=>{
-        const f=folderTree.find(x=>x.id===w.folderId);
-        const fp=f?.parentId?folderTree.find(x=>x.id===f.parentId):null;
-        const loc=fp?`${fp.name} > ${f?.name}`:(f?.name||'');
+        const loc=getFolderPath(w.folderId);
         const days=w.lastReviewed?Math.floor((now-w.lastReviewed)/DAY):null;
         const extraBadges=[
             w.memorized?'<span class="text-[9px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full font-bold shrink-0">암기완료</span>':'<span class="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-bold shrink-0">미암기</span>',
@@ -571,53 +569,76 @@ function toggleSidebar(){
 function closeSidebar(){document.getElementById('sidebar').classList.remove('open');document.getElementById('overlay').classList.remove('show');}
 
 // ── 폴더 렌더링 ──
+function renderFolderNode(folder,depth){
+    const isActive=folder.id===activeFolderId&&currentView==='words';
+    const children=folderTree.filter(f=>f.parentId===folder.id);
+    const isCollapsed=collapsedFolders.has(folder.id);
+    const childHtml=children.map(c=>renderFolderNode(c,depth+1)).join('');
+    return `<li class="flex flex-col mb-1">
+        <div class="flex items-center justify-between p-2 rounded-xl cursor-pointer transition ${isActive?'bg-indigo-600 text-white font-bold shadow-md':'hover:bg-slate-800 text-slate-300'}"
+            draggable="true"
+            ondragstart="dragFolderStart('${folder.id}',event)"
+            ondragend="dragFolderEnd(event)"
+            ondragover="event.preventDefault();event.stopPropagation();this.classList.add('drag-over')"
+            ondragleave="this.classList.remove('drag-over')"
+            ondrop="handleFolderRowDrop('${folder.id}',event);this.classList.remove('drag-over')"
+            onclick="selectFolderView('${folder.id}',event)">
+            <div class="flex items-center gap-2 truncate font-medium"><i class="fa-solid fa-folder${isActive?'-open text-white':' text-indigo-400'}"></i><span class="text-xs truncate">${escapeHtml(folder.name)}</span></div>
+            <div class="flex items-center gap-0.5 shrink-0">
+                ${children.length>0?`<button onclick="toggleFolderCollapse('${folder.id}',event)" class="text-slate-400 hover:text-white p-0.5"><i class="fa-solid fa-chevron-${isCollapsed?'right':'down'} text-[9px]"></i></button>`:''}
+                <button onclick="addSubFolder('${folder.id}',event)" class="text-slate-400 hover:text-white p-0.5" title="하위 폴더 추가"><i class="fa-solid fa-folder-plus text-xs"></i></button>
+                <button onclick="openMoveFolderModal('${folder.id}',event)" class="text-slate-400 hover:text-emerald-400 p-0.5" title="폴더 이동"><i class="fa-solid fa-arrows-up-down-left-right text-[9px]"></i></button>
+                <button onclick="renameFolder('${folder.id}',event)" class="text-slate-500 hover:text-indigo-400 p-0.5"><i class="fa-solid fa-pen text-[9px]"></i></button>
+                <button onclick="deleteFolder('${folder.id}',event)" class="text-slate-500 hover:text-rose-400 p-0.5"><i class="fa-solid fa-trash-can text-[9px]"></i></button>
+            </div>
+        </div>
+        ${(!isCollapsed&&children.length>0)?`<ul class="pl-5 mt-0.5 space-y-0.5 border-l border-slate-800 ml-3">${childHtml}</ul>`:''}
+    </li>`;
+}
 function renderFolders(){
     const area=document.getElementById('folderTreeArea'); if(!area)return;
     const roots=folderTree.filter(f=>f.parentId===null);
-    area.innerHTML=roots.map(root=>{
-        const isActive=root.id===activeFolderId&&currentView==='words';
-        const children=folderTree.filter(f=>f.parentId===root.id);
-        const isCollapsed=collapsedFolders.has(root.id);
-        const childHtml=children.map(child=>{
-            const ca=child.id===activeFolderId&&currentView==='words';
-            return `<li class="flex items-center justify-between p-2 rounded-xl cursor-pointer transition ${ca?'bg-indigo-600 text-white font-bold':'hover:bg-slate-800/80 text-slate-400 hover:text-slate-200'}"
-                ondragover="event.preventDefault();this.classList.add('drag-over')"
-                ondragleave="this.classList.remove('drag-over')"
-                ondrop="dropWordToFolder('${child.id}',event);this.classList.remove('drag-over')"
-                onclick="selectFolderView('${child.id}',event)">
-                <div class="flex items-center gap-2 truncate"><i class="fa-solid fa-file-lines text-xs ${ca?'text-white':'text-slate-500'}"></i><span class="text-xs truncate">${child.name}</span></div>
-                <div class="flex items-center gap-0.5 shrink-0">
-                    <button onclick="openMoveFolderModal('${child.id}',event)" class="text-slate-500 hover:text-emerald-400 p-0.5" title="폴더 이동"><i class="fa-solid fa-arrows-up-down-left-right text-[9px]"></i></button>
-                    <button onclick="renameFolder('${child.id}',event)" class="text-slate-500 hover:text-indigo-400 p-0.5"><i class="fa-solid fa-pen text-[9px]"></i></button>
-                    <button onclick="deleteFolder('${child.id}',event)" class="text-slate-500 hover:text-rose-400 p-0.5"><i class="fa-solid fa-trash-can text-[9px]"></i></button>
-                </div>
-            </li>`;
-        }).join('');
-        return `<li class="flex flex-col mb-1">
-            <div class="flex items-center justify-between p-2 rounded-xl cursor-pointer transition ${isActive?'bg-indigo-600 text-white font-bold shadow-md':'hover:bg-slate-800 text-slate-300'}"
-                ondragover="event.preventDefault();this.classList.add('drag-over')"
-                ondragleave="this.classList.remove('drag-over')"
-                ondrop="dropWordToFolder('${root.id}',event);this.classList.remove('drag-over')"
-                onclick="selectFolderView('${root.id}',event)">
-                <div class="flex items-center gap-2 truncate font-medium"><i class="fa-solid fa-folder${isActive?'-open text-white':' text-indigo-400'}"></i><span class="text-xs truncate">${root.name}</span></div>
-                <div class="flex items-center gap-0.5 shrink-0">
-                    ${children.length>0?`<button onclick="toggleFolderCollapse('${root.id}',event)" class="text-slate-400 hover:text-white p-0.5"><i class="fa-solid fa-chevron-${isCollapsed?'right':'down'} text-[9px]"></i></button>`:''}
-                    <button onclick="addSubFolder('${root.id}',event)" class="text-slate-400 hover:text-white p-0.5"><i class="fa-solid fa-folder-plus text-xs"></i></button>
-                    <button onclick="openMoveFolderModal('${root.id}',event)" class="text-slate-400 hover:text-emerald-400 p-0.5" title="폴더 순서 이동"><i class="fa-solid fa-arrows-up-down-left-right text-[9px]"></i></button>
-                    <button onclick="renameFolder('${root.id}',event)" class="text-slate-500 hover:text-indigo-400 p-0.5"><i class="fa-solid fa-pen text-[9px]"></i></button>
-                    <button onclick="deleteFolder('${root.id}',event)" class="text-slate-500 hover:text-rose-400 p-0.5"><i class="fa-solid fa-trash-can text-[9px]"></i></button>
-                </div>
-            </div>
-            ${(!isCollapsed&&children.length>0)?`<ul class="pl-5 mt-0.5 space-y-0.5 border-l border-slate-800 ml-3">${childHtml}</ul>`:''}
-        </li>`;
-    }).join('');
+    area.innerHTML=roots.map(root=>renderFolderNode(root,0)).join('');
     updateFolderName();
     updateReviewBadge();
+}
+function dragFolderStart(id,e){
+    e.stopPropagation();
+    draggingFolderId=id;
+    e.dataTransfer.effectAllowed='move';
+    try{e.dataTransfer.setData('text/plain','');}catch(err){}
+    e.currentTarget.classList.add('opacity-40');
+}
+function dragFolderEnd(e){
+    draggingFolderId=null;
+    document.querySelectorAll('#folderTreeArea .drag-over').forEach(el=>el.classList.remove('drag-over'));
+    e.currentTarget.classList.remove('opacity-40');
+}
+function handleFolderRowDrop(targetId,e){
+    e.preventDefault();e.stopPropagation();
+    if(draggingFolderId){moveFolderViaDrag(targetId);}
+    else{dropWordToFolder(targetId,e);}
+}
+function moveFolderViaDrag(targetId){
+    const id=draggingFolderId; draggingFolderId=null;
+    if(!id||id===targetId)return;
+    const folder=folderTree.find(f=>f.id===id);if(!folder)return;
+    if(isDescendantOf(targetId,id))return;
+    if(folder.parentId===targetId)return;
+    folder.parentId=targetId;
+    saveData();renderFolders();renderWords();
+}
+function handleRootAreaDrop(e){
+    e.preventDefault();
+    if(!draggingFolderId)return;
+    const folder=folderTree.find(f=>f.id===draggingFolderId);
+    draggingFolderId=null;
+    if(folder&&folder.parentId!==null){folder.parentId=null;saveData();renderFolders();renderWords();}
 }
 
 function updateFolderName(){
     const cur=folderTree.find(f=>f.id===activeFolderId);
-    if(cur){let d=cur.name;if(cur.parentId){const p=folderTree.find(f=>f.id===cur.parentId);if(p)d=`${p.name} > ${cur.name}`;}
+    if(cur){const d=getFolderPath(cur.id);
     const el=document.getElementById('currentFolderName');if(el)el.innerText=d;
     const el2=document.getElementById('currentFolderNameMobile');if(el2)el2.innerText=d;}
 }
@@ -642,7 +663,30 @@ function toggleFolderCollapse(id,e){e.stopPropagation();collapsedFolders.has(id)
 function addRootFolder(){const n=prompt("새 메인 폴더명:");if(!n?.trim())return;const id='f_'+Date.now();folderTree.push({id,name:n.trim(),parentId:null});activeFolderId=id;saveData();renderFolders();renderWords();}
 function addSubFolder(pid,e){e.stopPropagation();const p=folderTree.find(f=>f.id===pid);const n=prompt(`[ ${p.name} ] 하위 폴더명:`);if(!n?.trim())return;const id='f_'+Date.now();folderTree.push({id,name:n.trim(),parentId:pid});activeFolderId=id;collapsedFolders.delete(pid);saveData();renderFolders();renderWords();}
 function renameFolder(id,e){e.stopPropagation();const f=folderTree.find(x=>x.id===id);if(!f)return;const n=prompt("새 폴더 이름:",f.name);if(n?.trim()&&n.trim()!==f.name){f.name=n.trim();saveData();renderFolders();}}
-function deleteFolder(id,e){e.stopPropagation();const all=[id,...folderTree.filter(f=>f.parentId===id).map(f=>f.id)];if(confirm("폴더와 내부 데이터를 삭제합니다.?")){folderTree=folderTree.filter(f=>!all.includes(f.id));words=words.filter(w=>!all.includes(w.folderId));if(all.includes(activeFolderId))activeFolderId=folderTree[0]?.id||'';saveData();renderFolders();renderWords();}}
+function deleteFolder(id,e){e.stopPropagation();const all=[id,...getDescendantFolderIds(id)];if(confirm("폴더와 내부 데이터를 삭제합니다.?")){folderTree=folderTree.filter(f=>!all.includes(f.id));words=words.filter(w=>!all.includes(w.folderId));if(all.includes(activeFolderId))activeFolderId=folderTree[0]?.id||'';saveData();renderFolders();renderWords();}}
+
+// ── 폴더 트리 헬퍼 ──
+function getDescendantFolderIds(id){
+    const out=[];
+    folderTree.filter(f=>f.parentId===id).forEach(c=>{out.push(c.id);out.push(...getDescendantFolderIds(c.id));});
+    return out;
+}
+function isDescendantOf(candidateId,ancestorId){
+    if(candidateId===ancestorId)return true;
+    const f=folderTree.find(x=>x.id===candidateId);if(!f||f.parentId===null)return false;
+    return isDescendantOf(f.parentId,ancestorId);
+}
+function getFolderPath(id){
+    const names=[]; let cur=folderTree.find(f=>f.id===id);
+    while(cur){names.unshift(cur.name);cur=cur.parentId?folderTree.find(f=>f.id===cur.parentId):null;}
+    return names.join(' > ');
+}
+function getOrderedFolderList(){
+    const ordered=[];
+    const walk=(pid)=>{folderTree.filter(f=>f.parentId===pid).forEach(f=>{ordered.push(f);walk(f.id);});};
+    walk(null);
+    return ordered;
+}
 
 // ── 폴더 이동(순서 변경 · 다른 폴더로 이동) ──
 function openMoveFolderModal(id,e){
@@ -652,19 +696,21 @@ function openMoveFolderModal(id,e){
     document.getElementById('moveFolderLabel').textContent=`"${folder.name}" 폴더 이동`;
     const siblings=folderTree.filter(f=>f.parentId===folder.parentId);
     const idx=siblings.indexOf(folder);
+    const excluded=[id,...getDescendantFolderIds(id)];
+    const candidates=getOrderedFolderList().filter(f=>!excluded.includes(f.id));
     let html=`<div class="flex gap-2 mb-3">
         <button onclick="reorderFolder('${id}',-1)" ${idx<=0?'disabled':''} class="flex-1 bg-slate-50 hover:bg-indigo-50 disabled:opacity-40 disabled:pointer-events-none text-slate-700 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1"><i class="fa-solid fa-arrow-up"></i> 위로</button>
         <button onclick="reorderFolder('${id}',1)" ${idx>=siblings.length-1?'disabled':''} class="flex-1 bg-slate-50 hover:bg-indigo-50 disabled:opacity-40 disabled:pointer-events-none text-slate-700 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1"><i class="fa-solid fa-arrow-down"></i> 아래로</button>
     </div>`;
+    html+=`<div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 mt-4">다른 폴더로 이동</div>`;
     if(folder.parentId!==null){
-        const roots=folderTree.filter(f=>f.parentId===null&&f.id!==id);
-        html+=`<div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 mt-4">다른 폴더로 이동</div>`;
         html+=`<button onclick="moveFolderTo(null)" class="w-full text-left px-3 py-2.5 rounded-xl text-sm font-medium transition flex items-center gap-2 bg-slate-50 hover:bg-indigo-50 text-slate-700 mb-1.5"><i class="fa-solid fa-folder text-indigo-400"></i><span>최상위 폴더로 독립</span></button>`;
-        html+=roots.map(r=>{
-            const isCur=r.id===folder.parentId;
-            return `<button onclick="moveFolderTo('${r.id}')" class="w-full text-left px-3 py-2.5 rounded-xl text-sm font-medium transition flex items-center gap-2 mb-1.5 ${isCur?'bg-indigo-600 text-white':'bg-slate-50 hover:bg-indigo-50 text-slate-700'}"><i class="fa-solid fa-folder${isCur?'-open':''}"></i><span>${escapeHtml(r.name)}</span>${isCur?'<span class="ml-auto text-xs">현재</span>':''}</button>`;
-        }).join('');
     }
+    html+=candidates.map(f=>{
+        const isCur=f.id===folder.parentId;
+        const depth=getFolderPath(f.id).split(' > ').length-1;
+        return `<button onclick="moveFolderTo('${f.id}')" style="padding-left:${12+depth*14}px" class="w-full text-left py-2.5 pr-3 rounded-xl text-sm font-medium transition flex items-center gap-2 mb-1.5 ${isCur?'bg-indigo-600 text-white':'bg-slate-50 hover:bg-indigo-50 text-slate-700'}"><i class="fa-solid fa-folder${isCur?'-open':''}"></i><span class="truncate">${escapeHtml(f.name)}</span>${isCur?'<span class="ml-auto text-xs shrink-0">현재</span>':''}</button>`;
+    }).join('');
     document.getElementById('moveFolderDestList').innerHTML=html;
     document.getElementById('moveFolderModal').classList.remove('hidden');
 }
@@ -681,6 +727,7 @@ function reorderFolder(id,direction){
 }
 function moveFolderTo(parentId){
     const folder=folderTree.find(f=>f.id===movingFolderId);if(!folder)return;
+    if(parentId!==null&&isDescendantOf(parentId,folder.id))return;
     folder.parentId=parentId;
     saveData();renderFolders();renderWords();
     closeMoveFolderModal();
@@ -697,12 +744,11 @@ function dropWordToFolder(folderId,e){
 function openMoveModal(wordId){
     movingWordId=wordId;const w=words.find(x=>x.id===wordId);if(!w)return;
     document.getElementById('moveWordLabel').textContent=`"${w.word}" 을(를) 이동할 폴더 선택`;
-    document.getElementById('moveFolderList').innerHTML=folderTree.map(f=>{
-        const par=f.parentId?folderTree.find(x=>x.id===f.parentId):null;
-        const lbl=par?`${par.name} > ${f.name}`:f.name;
+    document.getElementById('moveFolderList').innerHTML=getOrderedFolderList().map(f=>{
+        const lbl=getFolderPath(f.id);
         const isCur=f.id===w.folderId;
         return `<button onclick="moveWordToFolder('${f.id}')" class="w-full text-left px-3 py-2.5 rounded-xl text-sm font-medium transition flex items-center gap-2 ${isCur?'bg-indigo-600 text-white':'bg-slate-50 hover:bg-indigo-50 text-slate-700'}">
-            <i class="fa-solid fa-folder${isCur?'-open':''} text-${isCur?'white':'indigo-400'}"></i><span>${lbl}</span>${isCur?'<span class="ml-auto text-xs">현재</span>':''}
+            <i class="fa-solid fa-folder${isCur?'-open':''} text-${isCur?'white':'indigo-400'}"></i><span class="truncate">${escapeHtml(lbl)}</span>${isCur?'<span class="ml-auto text-xs shrink-0">현재</span>':''}
         </button>`;
     }).join('');
     document.getElementById('moveModal').classList.remove('hidden');
@@ -713,8 +759,7 @@ function closeMoveModal(){document.getElementById('moveModal').classList.add('hi
 // ── 데이터 헬퍼 ──
 function getWordsForFolder(){
     const obj=folderTree.find(f=>f.id===activeFolderId);if(!obj)return[];
-    let ids=[activeFolderId];
-    if(obj.parentId===null)folderTree.filter(f=>f.parentId===obj.id).forEach(f=>ids.push(f.id));
+    const ids=[activeFolderId,...getDescendantFolderIds(activeFolderId)];
     let list=words.filter(w=>ids.includes(w.folderId));
     if(sortMode==='alpha')list.sort((a,b)=>a.word.localeCompare(b.word));
     else if(sortMode==='oldest')list.sort((a,b)=>a.id-b.id);
@@ -730,36 +775,29 @@ function renderStats(){
     document.getElementById('statMemorized').textContent=mem;
     document.getElementById('statRate').textContent=total>0?Math.round(mem/total*100)+'%':'0%';
     const roots=folderTree.filter(f=>f.parentId===null);
-    document.getElementById('statFolderTable').innerHTML=
-        `<div class="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">폴더별 현황</div>`+
-        roots.map(root=>{
-            const children=folderTree.filter(f=>f.parentId===root.id);
-            const allIds=[root.id,...children.map(c=>c.id)];
-            const fw=words.filter(w=>allIds.includes(w.folderId));
-            const fm=fw.filter(w=>w.memorized).length;
-            const pct=fw.length>0?Math.round(fm/fw.length*100):0;
-            const childRows=children.map(child=>{
-                const cw=words.filter(w=>w.folderId===child.id);
-                const cm=cw.filter(w=>w.memorized).length;
-                const cp=cw.length>0?Math.round(cm/cw.length*100):0;
-                return `<div class="flex items-center gap-3 pl-6 py-1.5 border-t border-slate-50 text-xs">
-                    <span class="text-slate-500 truncate flex-1"><i class="fa-solid fa-file-lines text-[10px] mr-1 text-slate-400"></i>${child.name}</span>
-                    <span class="text-slate-500 w-10 text-right">${cw.length}개</span>
-                    <span class="font-bold text-emerald-600 w-10 text-right">${cm}개</span>
-                    <div class="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden"><div class="h-full bg-emerald-500 rounded-full" style="width:${cp}%"></div></div>
-                    <span class="text-[10px] font-bold text-slate-400 w-8 text-right">${cp}%</span>
-                </div>`;
-            }).join('');
-            return `<div class="bg-slate-50 border border-slate-200 rounded-xl overflow-hidden mb-2">
-                <div class="flex items-center gap-3 px-3 py-2.5 bg-white border-b border-slate-100 text-xs">
-                    <span class="font-bold text-slate-700 truncate flex-1 text-sm"><i class="fa-solid fa-folder text-indigo-400 mr-1.5"></i>${root.name}</span>
+    const renderStatRow=(f,depth)=>{
+        const children=folderTree.filter(c=>c.parentId===f.id);
+        const fw=getWordsForFolderId(f.id);
+        const fm=fw.filter(w=>w.memorized).length;
+        const pct=fw.length>0?Math.round(fm/fw.length*100):0;
+        const row=depth===0?`<div class="flex items-center gap-3 px-3 py-2.5 bg-white border-b border-slate-100 text-xs">
+                    <span class="font-bold text-slate-700 truncate flex-1 text-sm"><i class="fa-solid fa-folder text-indigo-400 mr-1.5"></i>${escapeHtml(f.name)}</span>
                     <span class="text-slate-500 w-10 text-right">${fw.length}개</span>
                     <span class="font-bold text-emerald-600 w-10 text-right">${fm}개</span>
                     <div class="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden"><div class="h-full bg-emerald-500 rounded-full" style="width:${pct}%"></div></div>
                     <span class="text-[10px] font-bold text-slate-400 w-8 text-right">${pct}%</span>
-                </div>${childRows}
-            </div>`;
-        }).join('');
+                </div>`:`<div class="flex items-center gap-3 py-1.5 border-t border-slate-50 text-xs" style="padding-left:${8+depth*20}px;padding-right:12px">
+                    <span class="text-slate-500 truncate flex-1"><i class="fa-solid fa-file-lines text-[10px] mr-1 text-slate-400"></i>${escapeHtml(f.name)}</span>
+                    <span class="text-slate-500 w-10 text-right">${fw.length}개</span>
+                    <span class="font-bold text-emerald-600 w-10 text-right">${fm}개</span>
+                    <div class="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden"><div class="h-full bg-emerald-500 rounded-full" style="width:${pct}%"></div></div>
+                    <span class="text-[10px] font-bold text-slate-400 w-8 text-right">${pct}%</span>
+                </div>`;
+        return row+children.map(c=>renderStatRow(c,depth+1)).join('');
+    };
+    document.getElementById('statFolderTable').innerHTML=
+        `<div class="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">폴더별 현황</div>`+
+        roots.map(root=>`<div class="bg-slate-50 border border-slate-200 rounded-xl overflow-hidden mb-2">${renderStatRow(root,0)}</div>`).join('');
     renderFilteredWords();
 }
 
@@ -770,9 +808,7 @@ function renderFilteredWords(){
     const matches=words.filter(w=>w.word.toLowerCase().includes(q)||w.meanings.some(m=>m.toLowerCase().includes(q)));
     if(matches.length===0){container.innerHTML='<p class="text-sm text-slate-400 text-center py-4">검색 결과 없음</p>';return;}
     container.innerHTML=matches.slice(0,30).map(w=>{
-        const f=folderTree.find(x=>x.id===w.folderId);
-        const fp=f?.parentId?folderTree.find(x=>x.id===f.parentId):null;
-        const loc=fp?`${fp.name} > ${f?.name}`:(f?.name||'');
+        const loc=getFolderPath(w.folderId);
         return `<div class="bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-start gap-3">
             <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-2 mb-1">
@@ -920,7 +956,6 @@ function renderWords(){
     updateFolderName();
     const list=document.getElementById('wordListArea');if(!list)return;
     const data=getWordsForFolder();
-    const isRootView=folderTree.find(f=>f.id===activeFolderId)?.parentId===null;
     if(data.length===0){
         list.innerHTML=`<div class="py-16 text-center text-slate-400 bg-white rounded-2xl border border-dashed border-slate-200 font-medium">${isHideMemorized?'모든 단어를 암기하셨습니다! 🎉':'단어가 없습니다. 위에서 검색하여 추가하세요!'}</div>`;
         return;
@@ -928,7 +963,7 @@ function renderWords(){
     const blurCss=isBlurMode?'filter blur-sm hover:blur-none transition duration-300':'';
     list.innerHTML=data.map(w=>{
         const rf=folderTree.find(f=>f.id===w.folderId);
-        const badge=(isRootView&&rf&&rf.id!==activeFolderId)?rf.name:'';
+        const badge=(rf&&rf.id!==activeFolderId)?rf.name:'';
         const meanRows=w.meanings.map((m,idx)=>{
             const syn=w.synonyms[idx];
             const synHtml=(!isHideExtra&&syn)?`<div class="text-[11px] font-bold text-purple-700 pl-6 mt-0.5"><span class="bg-purple-100/80 px-1.5 py-0.5 rounded text-[9px] font-mono mr-1">유의어</span>${syn}</div>`:'';
@@ -2159,9 +2194,7 @@ function copyBulkAddPrompt(){
 function openBulkAddModal(){
     const sel=document.getElementById('bulkAddFolderSelect');
     sel.innerHTML=getOrderedFolderList().map(f=>{
-        const par=f.parentId?folderTree.find(x=>x.id===f.parentId):null;
-        const lbl=par?`${par.name} > ${f.name}`:f.name;
-        return `<option value="${f.id}">${escapeHtml(lbl)}</option>`;
+        return `<option value="${f.id}">${escapeHtml(getFolderPath(f.id))}</option>`;
     }).join('');
     if(activeFolderId)sel.value=activeFolderId;
     document.getElementById('bulkAddTextarea').value='';
@@ -2214,28 +2247,17 @@ function confirmBulkAdd(){
 // ── 학습지 생성 ──
 function getWordsForFolderId(folderId){
     const obj=folderTree.find(f=>f.id===folderId);if(!obj)return[];
-    let ids=[folderId];
-    if(obj.parentId===null)folderTree.filter(f=>f.parentId===obj.id).forEach(f=>ids.push(f.id));
+    const ids=[folderId,...getDescendantFolderIds(folderId)];
     return words.filter(w=>ids.includes(w.folderId));
 }
 function escapeHtml(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
-function getOrderedFolderList(){
-    const roots=folderTree.filter(f=>f.parentId===null);
-    let ordered=[];
-    roots.forEach(root=>{
-        ordered.push(root);
-        folderTree.filter(f=>f.parentId===root.id).forEach(child=>ordered.push(child));
-    });
-    return ordered;
-}
 function openWorksheetModal(){
     document.getElementById('worksheetFolderList').innerHTML=getOrderedFolderList().map(f=>{
-        const par=f.parentId?folderTree.find(x=>x.id===f.parentId):null;
-        const lbl=par?`${par.name} > ${f.name}`:f.name;
+        const lbl=getFolderPath(f.id);
         const cnt=getWordsForFolderId(f.id).length;
         return `<label class="w-full text-left px-3 py-2.5 rounded-xl text-sm font-medium transition flex items-center gap-2 bg-slate-50 hover:bg-indigo-50 text-slate-700 cursor-pointer">
             <input type="checkbox" class="worksheet-folder-check" value="${f.id}">
-            <i class="fa-solid fa-folder${par?'-open':''} text-indigo-400"></i><span class="flex-1 truncate">${lbl}</span><span class="text-xs text-slate-400 shrink-0">${cnt}개</span>
+            <i class="fa-solid fa-folder${f.parentId?'-open':''} text-indigo-400"></i><span class="flex-1 truncate">${escapeHtml(lbl)}</span><span class="text-xs text-slate-400 shrink-0">${cnt}개</span>
         </label>`;
     }).join('');
     document.getElementById('worksheetRandomCheck').checked=false;
