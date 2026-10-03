@@ -1093,7 +1093,7 @@ function closeStudyModal(){
     if(currentView==='review')renderReviewView();
     updateReviewBadge();
 }
-function handleStudyKeys(e){if(e.key==='Escape'){closeStudyModal();return;}if(studyMode==='flashcard'&&(e.key===' '||e.key==='Spacebar')){e.preventDefault();fcFlipped=!fcFlipped;renderStudyCanvas();}else if((e.key==='ArrowLeft'||e.key==='<')&&document.activeElement?.tagName!=='INPUT')studyPrev();else if((e.key==='ArrowRight'||e.key==='>')&&document.activeElement?.tagName!=='INPUT')studyNext();}
+function handleStudyKeys(e){if(e.key==='Escape'){closeStudyModal();return;}if(studyMode==='flashcard'&&(e.key===' '||e.key==='Spacebar')){e.preventDefault();fcFlipped=!fcFlipped;renderStudyCanvas();}else if(e.key==='<'){e.preventDefault();studyPrev();}else if(e.key==='>'){e.preventDefault();studyNext();}else if(e.key==='ArrowLeft'&&document.activeElement?.tagName!=='INPUT')studyPrev();else if(e.key==='ArrowRight'&&document.activeElement?.tagName!=='INPUT')studyNext();}
 function setStudyMode(mode){
     clearTimeout(studyNextTimer);studyMode=mode;fcFlipped=false;wrongWords=[];
     document.querySelectorAll('.study-tab').forEach(b=>b.className="px-2.5 py-1.5 rounded-lg study-tab text-slate-400 hover:text-white whitespace-nowrap");
@@ -1398,6 +1398,7 @@ function checkSpellResult(userAnswerRaw){
     const u=(userAnswerRaw||'').trim().toLowerCase(),r=studyList[studyIndex].word.toLowerCase(),fb=document.getElementById('spellFb');if(!fb)return;
     if(u===r){fb.innerHTML=`<span class="text-emerald-600 font-black flex items-center justify-center gap-1.5"><i class="fa-solid fa-circle-check"></i> 정답!</span>`;doSpeak(r);}
     else{addWrongWord(studyList[studyIndex]);fb.innerHTML=`<span class="text-rose-600">오답 — 정답: <strong class="underline font-mono">${studyList[studyIndex].word}</strong></span>`;}
+    document.getElementById('spellInp')?.blur();
     scheduleStudyAdvance(1400);
 }
 function initTapSpelling(word){
@@ -1443,6 +1444,7 @@ function selectBlankChoice(idx,el){
 }
 function resolveBlankResult(item,isCorrect){
     const fb=document.getElementById('blankFb');if(!fb)return;
+    document.getElementById('blankInp')?.blur();
     if(isCorrect){
         fb.innerHTML=`<span class="text-emerald-600 font-black flex items-center justify-center gap-1.5"><i class="fa-solid fa-circle-check"></i> 정답!</span>`;
         const exText=blankReadMode==='word'?item.word:(item.examples[item._questionExIdx??0]||item.examples[0]||item.word);
