@@ -323,6 +323,9 @@
             <button onclick="toggleShuffleMode()" id="studyShuffleBtn" class="bg-slate-900 border border-slate-800 text-slate-400 px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5">
                 <i class="fa-solid fa-shuffle"></i> <span>랜덤: OFF</span>
             </button>
+            <button onclick="toggleAutoAdvance()" id="autoAdvanceBtn" class="bg-slate-900 border border-slate-800 text-slate-400 px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5" title="정답 후 자동으로 다음 단어로 넘어갈지 여부">
+                <i class="fa-solid fa-forward"></i> <span>자동 넘어가기: ON</span>
+            </button>
             <button onclick="toggleChoiceDirection()" id="choiceDirBtn" class="hidden bg-slate-900 border border-slate-800 text-slate-400 px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5">
                 <i class="fa-solid fa-right-left"></i> <span>단어→뜻</span>
             </button>
@@ -1011,7 +1014,7 @@ function toggleBlurMode(){isBlurMode=!isBlurMode;document.getElementById('blurBt
 function toggleSortMode(){const b=document.getElementById('sortBtn');if(sortMode==='newest'){sortMode='oldest';b.innerHTML=`<i class="fa-solid fa-arrow-up-1-9 text-indigo-600"></i> <span class="text-indigo-600 font-extrabold">오래된순</span>`;}else if(sortMode==='oldest'){sortMode='alpha';b.innerHTML=`<i class="fa-solid fa-arrow-down-z-a text-purple-600"></i> <span class="text-purple-600 font-extrabold">A-Z순</span>`;}else{sortMode='newest';b.innerHTML=`<i class="fa-solid fa-arrow-down-9-1 text-slate-400"></i> 최신순`;}renderWords();}
 
 // ── 학습 모달 ──
-let studyList=[],studyIndex=0,studyMode='flashcard',fcFlipped=false,isShuffleOn=false,studyNextTimer=null;
+let studyList=[],studyIndex=0,studyMode='flashcard',fcFlipped=false,isShuffleOn=false,studyNextTimer=null,autoAdvanceOn=true;
 let wrongWords=[], retryRound=1;
 let choiceDirection='w2m', spellingInputMode='type', blankInputMode='type', blankReadMode='example';
 let tapPool=[], tapAnswer=[], tapCurrentIndex=-1;
@@ -1108,6 +1111,17 @@ function setStudyMode(mode){
         return;
     }
     renderStudyCanvas();
+}
+function toggleAutoAdvance(){
+    autoAdvanceOn=!autoAdvanceOn;const btn=document.getElementById('autoAdvanceBtn');
+    if(!autoAdvanceOn)clearTimeout(studyNextTimer);
+    btn.innerHTML=autoAdvanceOn
+        ?`<i class="fa-solid fa-forward"></i> <span>자동 넘어가기: ON</span>`
+        :`<i class="fa-solid fa-forward text-amber-400"></i> <span class="text-amber-400 font-extrabold">자동 넘어가기: OFF</span>`;
+}
+function scheduleStudyAdvance(delay){
+    if(!autoAdvanceOn)return;
+    studyNextTimer=setTimeout(()=>{if(!document.getElementById('studyModal').classList.contains('hidden'))studyNext();},delay);
 }
 function toggleShuffleMode(){
     isShuffleOn=!isShuffleOn;const btn=document.getElementById('studyShuffleBtn');clearTimeout(studyNextTimer);
@@ -1372,7 +1386,7 @@ function checkSynonymAnswer(){
     renderSynonymCanvas(item);
     const fb=document.getElementById('synonymFeedback');
     if(fb)fb.innerHTML=perfect?`<span class="text-emerald-600"><i class="fa-solid fa-circle-check"></i> 정답!</span>`:`<span class="text-rose-600">아쉬워요 — 초록/점선 표시가 정답이에요</span>`;
-    studyNextTimer=setTimeout(()=>{if(!document.getElementById('studyModal').classList.contains('hidden'))studyNext();},1800);
+    scheduleStudyAdvance(1800);
 }
 
 function checkSpell(){
@@ -1384,7 +1398,7 @@ function checkSpellResult(userAnswerRaw){
     const u=(userAnswerRaw||'').trim().toLowerCase(),r=studyList[studyIndex].word.toLowerCase(),fb=document.getElementById('spellFb');if(!fb)return;
     if(u===r){fb.innerHTML=`<span class="text-emerald-600 font-black flex items-center justify-center gap-1.5"><i class="fa-solid fa-circle-check"></i> 정답!</span>`;doSpeak(r);}
     else{addWrongWord(studyList[studyIndex]);fb.innerHTML=`<span class="text-rose-600">오답 — 정답: <strong class="underline font-mono">${studyList[studyIndex].word}</strong></span>`;}
-    studyNextTimer=setTimeout(()=>{if(!document.getElementById('studyModal').classList.contains('hidden'))studyNext();},1400);
+    scheduleStudyAdvance(1400);
 }
 function initTapSpelling(word){
     tapPool=word.toLowerCase().split('').map((c,i)=>({char:c,id:i,used:false}));
@@ -1436,16 +1450,16 @@ function resolveBlankResult(item,isCorrect){
         if('speechSynthesis' in window){
             window.speechSynthesis.cancel();
             const utt=new SpeechSynthesisUtterance(exText);utt.lang='en-US';utt.rate=0.9;
-            utt.onend=()=>{studyNextTimer=setTimeout(()=>{if(!document.getElementById('studyModal').classList.contains('hidden'))studyNext();},600);};
-            utt.onerror=()=>{studyNextTimer=setTimeout(()=>{if(!document.getElementById('studyModal').classList.contains('hidden'))studyNext();},600);};
+            utt.onend=()=>{scheduleStudyAdvance(600);};
+            utt.onerror=()=>{scheduleStudyAdvance(600);};
             window.speechSynthesis.speak(utt);
         } else {
-            studyNextTimer=setTimeout(()=>{if(!document.getElementById('studyModal').classList.contains('hidden'))studyNext();},1500);
+            scheduleStudyAdvance(1500);
         }
     } else {
         addWrongWord(item);
         fb.innerHTML=`<span class="text-rose-600">오답 — 정답: <strong class="underline font-mono">${item.word}</strong></span>`;
-        studyNextTimer=setTimeout(()=>{if(!document.getElementById('studyModal').classList.contains('hidden'))studyNext();},1400);
+        scheduleStudyAdvance(1400);
     }
 }
 
@@ -1485,7 +1499,7 @@ function selectChoice(idx,el){
         const ci=item._choices.findIndex(c=>c.correct),cb=document.querySelectorAll('.choice-btn')[ci];
         if(cb)cb.className="choice-btn w-full bg-emerald-50 border border-emerald-400 p-3.5 rounded-2xl text-sm font-bold text-emerald-900 text-left flex items-center justify-between";
     }
-    studyNextTimer=setTimeout(()=>{if(!document.getElementById('studyModal').classList.contains('hidden'))studyNext();},1400);
+    scheduleStudyAdvance(1400);
 }
 
 // ── 게임 센터 ──
