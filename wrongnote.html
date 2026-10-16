@@ -41,6 +41,19 @@
         .q-editor .blank:empty::after { content: '\00a0'; }
         .choice-mark.correct { background: #e11d48; color: #fff; border-color: #e11d48; }
 
+        /* 문제 풀기 */
+        #solveOverlay { position: fixed; inset: 0; background: #f1f5f9; z-index: 250; overflow-y: auto; }
+        #solveOverlay.hidden { display: none; }
+        .solve-text { line-height: 2.1; white-space: normal; word-break: break-word; }
+        .solve-text .blank { display: inline-block; border-bottom: 1.5px solid currentColor; height: 1.3em; vertical-align: baseline; margin: 0 2px; }
+        .solve-blank { border: none; border-bottom: 2px solid #e11d48; background: #fff1f2; text-align: center; font-weight: 700; padding: 0 4px; margin: 0 2px; outline: none; border-radius: 4px 4px 0 0; color: #0f172a; min-width: 4em; }
+        .solve-blank.ok { border-color: #10b981; background: #ecfdf5; color: #047857; }
+        .solve-blank.ng { border-color: #ef4444; background: #fef2f2; color: #b91c1c; text-decoration: line-through; }
+        .solve-choice { transition: background .15s, border-color .15s, transform .1s; }
+        .solve-choice:active { transform: scale(0.99); }
+        .solve-choice.sel { border-color: #e11d48; background: #fff1f2; }
+        .solve-choice.ok { border-color: #10b981; background: #ecfdf5; }
+        .solve-choice.ng { border-color: #ef4444; background: #fef2f2; }
         /* 시험지 미리보기 & 인쇄 */
         #paperOverlay { position: fixed; inset: 0; background: #e2e8f0; z-index: 300; overflow-y: auto; }
         #paperOverlay.hidden { display: none; }
@@ -193,6 +206,21 @@
     </div>
 </div>
 
+<!-- 문제 풀기 -->
+<div id="solveOverlay" class="hidden">
+    <div class="sticky top-0 z-10 bg-white border-b border-slate-200">
+        <div class="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
+            <button onclick="closeSolve()" class="w-9 h-9 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600" title="그만 풀기"><i class="fa-solid fa-xmark"></i></button>
+            <div class="flex-1 min-w-0">
+                <div id="solveTitle" class="text-sm font-extrabold truncate"></div>
+                <div class="h-1.5 bg-slate-100 rounded-full mt-1.5 overflow-hidden"><div id="solveBar" class="h-full bg-rose-500 transition-all" style="width:0"></div></div>
+            </div>
+            <div id="solveCount" class="text-xs font-bold text-slate-500 tabular-nums"></div>
+        </div>
+    </div>
+    <div id="solveBody" class="max-w-2xl mx-auto px-4 py-5"></div>
+</div>
+
 <!-- 시험지 미리보기 / PDF -->
 <div id="paperOverlay" class="hidden">
     <div class="no-print sticky top-0 z-10 bg-white border-b border-slate-200 shadow-sm">
@@ -250,10 +278,11 @@ const LS_UI = 'wrongnote_ui_v1';
 const CIRCLED = ['①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩'];
 const MAX_CHOICES = 10;
 
-let state = { folders: [], exams: [], updatedAt: 0 };
+let state = { folders: [], exams: [], deleted: {}, updatedAt: 0 };
 let ui = { folderId: 'all', examId: null, search: '', collapsed: [] };
 let selectedExams = new Set();
 let pendingRemote = null;
+let solving = false;
 let saveTimer = null;
 
 // ── 유틸 ──
@@ -285,44 +314,106 @@ function normalize(data) {
             q.text = q.text || ''; q.answerText = q.answerText || ''; q.explanation = q.explanation || '';
         });
     });
-    return { folders, exams, updatedAt: d.updatedAt || 0 };
+    const deleted = d.deleted && typeof d.deleted === 'object' ? { ...d.deleted } : {};
+    return { folders, exams, deleted, updatedAt: d.updatedAt || 0 };
 }
+// 자동으로 만든 빈 '기본 폴더'인지 (기기마다 따로 생기므로 합칠 때 정리)
+const isAutoFolder = f => f.auto || (!f.u && f.name === '기본 폴더');
 function ensureDefaultFolder() {
-    if (state.folders.length === 0) state.folders.push({ id: uid(), name: '기본 폴더', parentId: null });
+    if (state.folders.length === 0) state.folders.push({ id: uid(), name: '기본 폴더', parentId: null, auto: true });
     const ids = new Set(state.folders.map(f => f.id));
     state.exams.forEach(e => { if (!ids.has(e.folderId)) e.folderId = state.folders[0].id; });
 }
+
+// ── 동기화: 기기끼리 통째로 덮어쓰지 않고 폴더·시험지 단위로 합침 ──
+// 각 항목은 마지막으로 바뀐 시각 u를 갖고, 지운 항목은 deleted[id]에 지운 시각을 남김
+let snap = new Map();
+const itemKey = x => { const { u, ...rest } = x; return JSON.stringify(rest); };
+function resetSnap() { snap = new Map([...state.folders, ...state.exams].map(x => [x.id, itemKey(x)])); }
+function stampChanges() {
+    const now = Date.now(); const seen = new Set();
+    for (const x of [...state.folders, ...state.exams]) {
+        seen.add(x.id);
+        const k = itemKey(x);
+        if (snap.get(x.id) !== k) { x.u = now; snap.set(x.id, itemKey(x)); }
+    }
+    for (const id of [...snap.keys()]) if (!seen.has(id)) { state.deleted[id] = now; snap.delete(id); }
+    const old = now - 90 * 864e5;
+    for (const id in state.deleted) if (state.deleted[id] < old) delete state.deleted[id];
+}
+function mergeStates(a, b) {
+    const deleted = { ...a.deleted };
+    for (const id in b.deleted) deleted[id] = Math.max(deleted[id] || 0, b.deleted[id]);
+    const pick = (la, lb) => {
+        const m = new Map();
+        for (const x of [...la, ...lb]) { const cur = m.get(x.id); if (!cur || (x.u || 0) > (cur.u || 0)) m.set(x.id, x); }
+        return [...m.values()].filter(x => !(deleted[x.id] >= (x.u || 0)));
+    };
+    const exams = JSON.parse(JSON.stringify(pick(a.exams, b.exams)));
+    let folders = JSON.parse(JSON.stringify(pick(a.folders, b.folders)));
+    const used = id => exams.some(e => e.folderId === id) || folders.some(f => f.parentId === id);
+    const extra = folders.filter(f => isAutoFolder(f) && !used(f.id));
+    if (extra.length && folders.length > extra.length) folders = folders.filter(f => !extra.includes(f));
+    else if (extra.length > 1) folders = folders.filter(f => !extra.slice(1).includes(f));
+    return { folders, exams, deleted, updatedAt: Math.max(a.updatedAt || 0, b.updatedAt || 0) };
+}
+const canon = st => JSON.stringify([
+    [...st.folders].sort((x, y) => x.id < y.id ? -1 : 1),
+    [...st.exams].sort((x, y) => x.id < y.id ? -1 : 1),
+    Object.keys(st.deleted).sort().map(k => [k, st.deleted[k]])
+]);
+let lastRemote = null;
+
 function loadLocal() {
     try { state = normalize(JSON.parse(localStorage.getItem(LS_KEY) || 'null')); } catch (e) { state = normalize(null); }
     try { Object.assign(ui, JSON.parse(localStorage.getItem(LS_UI) || '{}')); } catch (e) {}
     ensureDefaultFolder();
+    resetSnap();
 }
 function saveUI() { try { localStorage.setItem(LS_UI, JSON.stringify(ui)); } catch (e) {} }
-function save() {
-    state.updatedAt = Date.now();
-    try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (e) {}
+function saveLocalOnly() { try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (e) {} }
+function pushRemote() {
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => { if (window._saveToFirestore) window._saveToFirestore(JSON.parse(JSON.stringify(state))); }, 700);
+    saveTimer = setTimeout(() => {
+        if (!window._saveToFirestore) return;
+        // 아직 반영 못 한 다른 기기 변경분을 지우지 않도록 합친 결과를 올림
+        const out = lastRemote ? mergeStates(state, lastRemote) : state;
+        out.updatedAt = Date.now();
+        window._saveToFirestore(JSON.parse(JSON.stringify(out)));
+    }, 700);
+}
+function save() {
+    stampChanges();
+    state.updatedAt = Date.now();
+    saveLocalOnly();
+    pushRemote();
 }
 function isEditing() { const a = document.activeElement; return !!(a && document.getElementById('mainContent').contains(a) && (a.isContentEditable || /INPUT|TEXTAREA|SELECT/.test(a.tagName))); }
 window._onRemote = function (data) {
-    if (!data) { if (state.exams.length || state.folders.length > 1) save(); return; }
-    const remote = normalize(data);
-    if (remote.updatedAt > state.updatedAt) {
-        if (isEditing()) { pendingRemote = remote; return; }
-        applyRemote(remote);
-    } else if (remote.updatedAt < state.updatedAt) {
-        save();
+    stampChanges();
+    if (!data) { lastRemote = null; if (state.exams.length || state.folders.some(f => !isAutoFolder(f))) pushRemote(); return; }
+    lastRemote = normalize(data);
+    const merged = mergeStates(state, lastRemote);
+    if (canon(merged) !== canon(state)) {
+        if (isEditing() || solving) { pendingRemote = true; }
+        else applyMerged(merged);
     }
+    if (canon(merged) !== canon(lastRemote)) pushRemote();
 };
-function applyRemote(remote) {
-    state = remote; pendingRemote = null;
+function applyMerged(merged) {
+    state = merged; pendingRemote = null;
     ensureDefaultFolder();
-    try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (e) {}
+    resetSnap();
+    saveLocalOnly();
     if (ui.examId && !getExam(ui.examId)) ui.examId = null;
     render();
 }
-document.addEventListener('focusout', () => setTimeout(() => { if (pendingRemote && !isEditing() && pendingRemote.updatedAt > state.updatedAt) applyRemote(pendingRemote); }, 300));
+function flushPendingRemote() {
+    if (!pendingRemote || isEditing() || solving || !lastRemote) return;
+    stampChanges();
+    applyMerged(mergeStates(state, lastRemote));
+}
+document.addEventListener('focusout', () => setTimeout(flushPendingRemote, 300));
 
 // ── 조회 헬퍼 ──
 const getFolder = id => state.folders.find(f => f.id === id);
@@ -486,6 +577,7 @@ function renderList() {
         </div>
         ${sel ? `<div class="sticky top-0 z-10 mb-4 bg-slate-900 text-white rounded-2xl px-4 py-3 flex flex-wrap items-center gap-2 shadow-lg">
             <span class="text-sm font-bold flex-1">${sel}개 시험지 선택됨</span>
+            <button onclick="openSolve([...selectedExams])" class="bg-emerald-600 hover:bg-emerald-500 text-xs font-bold px-3 py-2 rounded-lg"><i class="fa-solid fa-play mr-1"></i>합쳐서 풀기</button>
             <button onclick="openPaper([...selectedExams])" class="bg-rose-600 hover:bg-rose-500 text-xs font-bold px-3 py-2 rounded-lg"><i class="fa-solid fa-layer-group mr-1"></i>합쳐서 시험지 만들기</button>
             <button onclick="selectedExams.clear();renderList()" class="bg-white/10 hover:bg-white/20 text-xs font-bold px-3 py-2 rounded-lg">취소</button>
         </div>` : ''}
@@ -519,10 +611,12 @@ function examCard(e) {
                 <span><i class="fa-regular fa-calendar-check mr-1"></i>푼 날짜 ${fmtDate(e.solvedDate)}</span>
                 <span><i class="fa-solid fa-pen-to-square mr-1"></i>오답 작성 ${fmtDate(e.writtenDate)}</span>
                 <span><i class="fa-solid fa-list-ol mr-1"></i>${e.questions.length}문항</span>
+                ${e.lastSolve ? `<span class="${e.lastSolve.correct === e.lastSolve.total ? 'text-emerald-600' : 'text-amber-600'} font-bold"><i class="fa-solid fa-check-double mr-1"></i>최근 풀이 ${e.lastSolve.correct}/${e.lastSolve.total} (${fmtDate(e.lastSolve.date)})</span>` : ''}
             </div>
             ${ui.folderId === 'all' ? `<div class="text-[10px] text-slate-400 mt-1"><i class="fa-solid fa-folder mr-1"></i>${escapeHtml(folderPath(e.folderId))}</div>` : ''}
         </button>
         <div class="flex gap-1 text-slate-400 text-xs">
+            <button onclick="openSolve(['${e.id}'])" title="문제 풀기" class="w-8 h-8 rounded-lg hover:bg-emerald-50 hover:text-emerald-600"><i class="fa-solid fa-play"></i></button>
             <button onclick="openPaper(['${e.id}'])" title="시험지 보기/PDF" class="w-8 h-8 rounded-lg hover:bg-rose-50 hover:text-rose-600"><i class="fa-solid fa-print"></i></button>
             <button onclick="openMoveModal('exam','${e.id}')" title="폴더 이동" class="w-8 h-8 rounded-lg hover:bg-slate-100 hover:text-slate-700"><i class="fa-solid fa-folder-tree"></i></button>
             <button onclick="duplicateExam('${e.id}')" title="복제" class="w-8 h-8 rounded-lg hover:bg-slate-100 hover:text-slate-700"><i class="fa-regular fa-copy"></i></button>
@@ -574,6 +668,7 @@ function renderEditor(ex) {
     document.getElementById('breadcrumb').innerHTML = `<button onclick="closeExam()" class="text-slate-400 hover:text-slate-700 mr-2"><i class="fa-solid fa-arrow-left"></i></button><span class="text-slate-400 font-normal">${escapeHtml(folderPath(ex.folderId))} /</span> ${escapeHtml(ex.title || '(제목 없음)')}`;
     document.getElementById('headerActions').innerHTML = `
         <button onclick="openAiModal()" class="bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold px-3 py-2 rounded-lg"><i class="fa-solid fa-camera text-rose-500 mr-1"></i>사진<span class="hidden sm:inline">으로 문제 추가</span></button>
+        <button onclick="openSolve(['${ex.id}'])" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-3 py-2 rounded-lg"><i class="fa-solid fa-play mr-1"></i>풀기</button>
         <button onclick="openPaper(['${ex.id}'])" class="bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold px-3 py-2 rounded-lg"><i class="fa-solid fa-print mr-1"></i><span class="hidden sm:inline">시험지 보기 / </span>PDF</button>`;
     const folderOpts = [];
     (function walk(pid, depth) { childFolders(pid).forEach(f => { folderOpts.push(`<option value="${f.id}" ${f.id === ex.folderId ? 'selected' : ''}>${'　'.repeat(depth)}${escapeHtml(f.name)}</option>`); walk(f.id, depth + 1); }); })(null, 0);
@@ -621,6 +716,7 @@ function questionCard(ex, q, i) {
         <div class="flex items-center gap-2 mb-2">
             <span class="w-8 h-8 rounded-lg bg-slate-900 text-white font-extrabold text-sm flex items-center justify-center">${i + 1}</span>
             <span class="text-xs font-bold text-slate-500">문제</span>
+            ${q.tries ? `<span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${q.lastWrong ? 'bg-red-50 text-red-500' : 'bg-emerald-50 text-emerald-600'}" title="사이트에서 푼 기록">${q.tries}번 풀어서 ${q.wrongs || 0}번 틀림</span>` : ''}
             <div class="flex-1"></div>
             <button onmousedown="event.preventDefault()" onclick="insertBlank('${q.id}')" class="text-xs font-bold bg-rose-50 text-rose-600 hover:bg-rose-100 px-3 py-1.5 rounded-lg" title="빈칸 넣기 (Ctrl+B)"><u class="no-underline border-b-2 border-rose-500 px-1">&nbsp;&nbsp;&nbsp;</u> 빈칸</button>
             <div class="flex text-slate-400 text-xs">
@@ -1052,6 +1148,267 @@ function confirmAiAdd() {
     cards[cards.length - add.length]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
+// ── 문제 풀기 ──
+let solve = null; // { items, idx, results, opts, examIds }
+let solveOpts = { shuffleQ: false, shuffleC: false, wrongOnly: false };
+try { Object.assign(solveOpts, JSON.parse(localStorage.getItem('wrongnote_solve_opts') || '{}')); } catch (e) {}
+
+const normAns = t => String(t || '').toLowerCase().replace(/[\s.,·:;'"`()\[\]{}<>~!?「」『』“”‘’-]/g, '');
+// 여러 정답 허용: "A/B" 또는 "A|B" 처럼 적어두면 어느 쪽이든 정답
+const ansMatch = (input, ans) => { const n = normAns(input); return !!n && String(ans).split(/[\/|]/).some(a => normAns(a) === n); };
+
+function solveExams(ids) { return ids.map(getExam).filter(Boolean); }
+function openSolve(ids) {
+    const exams = solveExams(ids);
+    if (!exams.some(e => e.questions.some(q => q.text.trim() || q.choices.some(c => c.trim())))) { alert('풀 문제가 없어요. 먼저 문제를 입력해 주세요.'); return; }
+    solve = { examIds: exams.map(e => e.id) };
+    document.getElementById('solveOverlay').classList.remove('hidden');
+    renderSolveSetup();
+}
+function renderSolveSetup() {
+    const exams = solveExams(solve.examIds);
+    const all = exams.flatMap(e => e.questions.filter(q => q.text.trim() || q.choices.some(c => c.trim())));
+    const wrongN = all.filter(q => q.wrongs).length;
+    if (!wrongN) solveOpts.wrongOnly = false;
+    document.getElementById('solveTitle').textContent = exams.length === 1 ? (exams[0].title || '(제목 없음)') : `시험지 ${exams.length}개 합쳐 풀기`;
+    document.getElementById('solveCount').textContent = '';
+    document.getElementById('solveBar').style.width = '0';
+    const opt = (key, label, desc, disabled) => `
+        <label class="flex items-start gap-3 bg-white border border-slate-200 rounded-xl p-3 ${disabled ? 'opacity-40' : 'cursor-pointer hover:border-rose-300'}">
+            <input type="checkbox" ${solveOpts[key] ? 'checked' : ''} ${disabled ? 'disabled' : ''} onchange="solveOpts['${key}']=this.checked;renderSolveSetup()" class="mt-1 w-4 h-4 accent-rose-600">
+            <div><div class="text-sm font-bold">${label}</div><div class="text-[11px] text-slate-500">${desc}</div></div>
+        </label>`;
+    const n = solveOpts.wrongOnly ? wrongN : all.length;
+    document.getElementById('solveBody').innerHTML = `
+    <div class="animate-fade-in space-y-3">
+        <div class="bg-white border border-slate-200 rounded-2xl p-5 text-center">
+            <div class="text-4xl mb-2">✏️</div>
+            <div class="font-extrabold text-lg">${n}문제를 풀어볼게요</div>
+            <div class="text-xs text-slate-500 mt-1">한 문제씩 풀고 바로 채점해요. 풀이 기록은 문제마다 저장돼요.</div>
+        </div>
+        ${opt('shuffleQ', '문제 순서 섞기', '매번 다른 순서로 나와요')}
+        ${opt('shuffleC', '선지 순서 섞기', '선지 위치를 외우지 않도록 순서를 바꿔요')}
+        ${opt('wrongOnly', `틀린 적 있는 문제만 (${wrongN}문제)`, '사이트에서 풀다가 한 번이라도 틀린 문제만 골라요', !wrongN)}
+        <button onclick="startSolve()" ${n ? '' : 'disabled'} class="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-300 text-white font-extrabold py-3.5 rounded-2xl text-base"><i class="fa-solid fa-play mr-1.5"></i>시작하기</button>
+    </div>`;
+}
+function startSolve(onlyItems) {
+    try { localStorage.setItem('wrongnote_solve_opts', JSON.stringify(solveOpts)); } catch (e) {}
+    let items;
+    if (onlyItems) items = onlyItems.map(it => ({ q: it.q, ex: it.ex }));
+    else {
+        items = [];
+        solveExams(solve.examIds).forEach(ex => ex.questions.forEach(q => {
+            if (!(q.text.trim() || q.choices.some(c => c.trim()))) return;
+            if (solveOpts.wrongOnly && !q.wrongs) return;
+            items.push({ q, ex });
+        }));
+    }
+    if (solveOpts.shuffleQ) items = shuffleArr(items);
+    items.forEach(it => {
+        const idx = it.q.choices.map((_, i) => i).filter(i => it.q.choices[i].trim());
+        it.choiceOrder = solveOpts.shuffleC ? shuffleArr(idx) : idx;
+    });
+    solve.items = items; solve.idx = 0; solve.results = [];
+    solving = true;
+    renderSolveQ();
+}
+function solveKind(q) {
+    const blanks = blankAnswers(q.text);
+    return {
+        choice: q.choices.some(c => c.trim()),
+        choiceGradable: q.answers.length > 0,
+        blanks,
+        blanksGradable: blanks.some(Boolean),
+        text: !q.choices.some(c => c.trim()) && !blanks.some(Boolean),
+    };
+}
+function solveText(q, state) {
+    // 빈칸 중 정답이 있는 것은 입력칸으로, 정답이 없는 것은 밑줄로
+    let out = '', last = 0, m, bi = 0; BLANK_RE.lastIndex = 0;
+    while ((m = BLANK_RE.exec(q.text))) {
+        out += escapeHtml(q.text.slice(last, m.index)).replace(/\n/g, '<br>');
+        const ans = decodeURIComponent(m[1] || '');
+        const w = blankWidth(ans) + 1;
+        if (ans) {
+            const r = state?.blankRes?.[bi];
+            const val = state ? escapeHtml(state.blankIn[bi] || '') : '';
+            out += `<input class="solve-blank ${r === true ? 'ok' : r === false ? 'ng' : ''}" data-bi="${bi}" style="width:${w}em" value="${val}" ${state ? 'disabled' : ''} autocomplete="off" autocapitalize="off" spellcheck="false">`;
+            if (r === false) out += `<span class="text-emerald-600 font-bold text-sm mx-1">→ ${escapeHtml(ans)}</span>`;
+        } else out += `<span class="blank" style="width:${w - 1}em"></span>`;
+        bi++; last = m.index + m[0].length;
+    }
+    return out + escapeHtml(q.text.slice(last)).replace(/\n/g, '<br>');
+}
+function renderSolveQ() {
+    const it = solve.items[solve.idx]; const q = it.q; const k = solveKind(q);
+    const res = solve.results[solve.idx];
+    const total = solve.items.length;
+    document.getElementById('solveCount').textContent = `${solve.idx + 1} / ${total}`;
+    document.getElementById('solveBar').style.width = `${(solve.idx + (res ? 1 : 0)) / total * 100}%`;
+    const src = solve.examIds.length > 1 && it.ex.title ? `<span class="text-[11px] font-bold text-slate-400 ml-1">${escapeHtml(it.ex.title)}</span>` : '';
+    const multi = q.answers.length > 1;
+    let choices = '';
+    if (k.choice) {
+        choices = `<div class="space-y-2 mt-4">${it.choiceOrder.map((orig, pos) => {
+            let cls = '';
+            if (res) { if (q.answers.includes(orig)) cls = 'ok'; else if (res.picked.includes(orig)) cls = 'ng'; }
+            else if ((it.picked || []).includes(orig)) cls = 'sel';
+            return `<button ${res ? 'disabled' : `onclick="pickChoice(${orig})"`} class="solve-choice ${cls} w-full text-left bg-white border-2 border-slate-200 rounded-xl px-4 py-3 flex gap-3 ${res ? '' : 'hover:border-rose-300'}">
+                <span class="font-bold shrink-0">${choiceMark(pos)}</span><span class="flex-1">${escapeHtml(q.choices[orig]).replace(/\n/g, '<br>')}</span>
+                ${res && q.answers.includes(orig) ? '<i class="fa-solid fa-circle-check text-emerald-500 mt-1"></i>' : ''}${res && cls === 'ng' ? '<i class="fa-solid fa-circle-xmark text-red-500 mt-1"></i>' : ''}
+            </button>`;
+        }).join('')}</div>`;
+        if (multi && !res) choices = `<div class="text-[11px] font-bold text-rose-600 mt-3">정답이 ${q.answers.length}개예요. 모두 고르세요.</div>` + choices;
+    }
+    const textInput = k.text ? `<textarea id="solveTextIn" rows="2" ${res ? 'disabled' : ''} placeholder="${q.answerText.trim() ? '답을 입력하세요' : '답을 생각하거나 적어 본 뒤 정답을 확인하세요'}" class="mt-4 w-full border-2 border-slate-200 rounded-xl px-3 py-2 outline-none focus:border-rose-400 bg-white">${res ? escapeHtml(res.textIn || '') : ''}</textarea>` : '';
+
+    let feedback = '', actions = '';
+    if (res) {
+        const label = answerLabel({ q, choiceOrder: it.choiceOrder });
+        feedback = `<div class="mt-5 rounded-2xl p-4 ${res.correct ? 'bg-emerald-50 border border-emerald-200' : 'bg-red-50 border border-red-200'}">
+            <div class="font-extrabold text-lg ${res.correct ? 'text-emerald-600' : 'text-red-500'}">${res.correct ? '<i class="fa-solid fa-circle-check mr-1"></i>정답이에요!' : '<i class="fa-solid fa-circle-xmark mr-1"></i>틀렸어요'}</div>
+            ${label !== '-' ? `<div class="text-sm mt-1"><b>정답</b> <span class="text-rose-600 font-bold">${label}</span></div>` : ''}
+            ${q.explanation.trim() ? `<div class="text-sm mt-2 text-slate-700 bg-white/70 rounded-lg p-2.5 leading-relaxed"><b>해설</b> ${escapeHtml(q.explanation.trim()).replace(/\n/g, '<br>')}</div>` : ''}
+            ${res.selfGraded ? '' : (!res.correct && (k.text || k.blanksGradable) ? `<button onclick="overrideCorrect()" class="mt-2 text-[11px] underline text-slate-500">사실 맞게 썼어요 (정답 처리)</button>` : '')}
+        </div>`;
+        actions = `<button onclick="nextSolve()" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-extrabold py-3.5 rounded-2xl">${solve.idx + 1 < total ? '다음 문제 <i class="fa-solid fa-arrow-right ml-1"></i>' : '결과 보기 <i class="fa-solid fa-flag-checkered ml-1"></i>'}</button>`;
+    } else if (it.reveal) {
+        // 채점 기준이 없는 문제: 정답을 보고 스스로 채점
+        const label = answerLabel({ q, choiceOrder: it.choiceOrder });
+        feedback = `<div class="mt-5 rounded-2xl p-4 bg-white border border-slate-200">
+            <div class="text-sm"><b>정답</b> <span class="text-rose-600 font-bold">${label !== '-' ? label : '(입력된 정답이 없어요)'}</span></div>
+            ${q.explanation.trim() ? `<div class="text-sm mt-2 text-slate-700 leading-relaxed"><b>해설</b> ${escapeHtml(q.explanation.trim()).replace(/\n/g, '<br>')}</div>` : ''}
+            <div class="text-xs text-slate-500 mt-3">맞혔나요?</div></div>`;
+        actions = `<div class="grid grid-cols-2 gap-2"><button onclick="selfGrade(false)" class="bg-red-500 hover:bg-red-600 text-white font-extrabold py-3.5 rounded-2xl">틀렸어요</button><button onclick="selfGrade(true)" class="bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold py-3.5 rounded-2xl">맞혔어요</button></div>`;
+    } else {
+        actions = `<div class="grid grid-cols-3 gap-2"><button onclick="giveUp()" class="bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 font-bold py-3.5 rounded-2xl text-sm">모르겠어요</button>
+            <button onclick="checkSolve()" class="col-span-2 bg-rose-600 hover:bg-rose-500 text-white font-extrabold py-3.5 rounded-2xl">${gradable(it) ? '채점하기' : '정답 확인'}</button></div>`;
+    }
+    document.getElementById('solveBody').innerHTML = `
+    <div class="animate-fade-in">
+        <div class="bg-white border border-slate-200 rounded-2xl p-5">
+            <div class="text-xs font-extrabold text-rose-500 mb-2">문제 ${solve.idx + 1}${src}</div>
+            <div class="solve-text text-[16px]">${solveText(q, res)}</div>
+            ${textInput}
+        </div>
+        ${choices}${feedback}
+        <div class="mt-5 pb-10">${actions}</div>
+    </div>`;
+    if (!res) (document.querySelector('#solveBody .solve-blank') || document.getElementById('solveTextIn'))?.focus({ preventScroll: true });
+    document.getElementById('solveOverlay').scrollTop = 0;
+}
+// 정답이 입력돼 있어 자동 채점이 되는지
+function gradable(it) {
+    const k = solveKind(it.q);
+    if (k.choice && !k.choiceGradable) return false;
+    if (k.text) return !!it.q.answerText.trim();
+    return true;
+}
+function pickChoice(orig) {
+    const it = solve.items[solve.idx]; const q = it.q;
+    it.picked = it.picked || [];
+    if (q.answers.length > 1) { const i = it.picked.indexOf(orig); i >= 0 ? it.picked.splice(i, 1) : it.picked.push(orig); }
+    else it.picked = [orig];
+    renderSolveQ();
+}
+function collectInputs(it) {
+    it.blankIn = [...document.querySelectorAll('#solveBody .solve-blank')].reduce((a, el) => (a[+el.dataset.bi] = el.value, a), {});
+    it.textIn = document.getElementById('solveTextIn')?.value || '';
+}
+function checkSolve() {
+    const it = solve.items[solve.idx]; const q = it.q; const k = solveKind(q);
+    collectInputs(it);
+    if (!gradable(it)) { it.reveal = true; renderSolveQ(); return; }
+    const picked = it.picked || [];
+    if (k.choice && !picked.length && !confirm('선지를 고르지 않았어요. 이대로 채점할까요?')) return;
+    let ok = true;
+    if (k.choice) ok = ok && picked.length === q.answers.length && picked.every(p => q.answers.includes(p));
+    const blankRes = {};
+    k.blanks.forEach((ans, bi) => { if (ans) { blankRes[bi] = ansMatch(it.blankIn[bi], ans); ok = ok && blankRes[bi]; } });
+    if (k.text) ok = ansMatch(it.textIn, q.answerText);
+    solve.results[solve.idx] = { correct: ok, picked, blankIn: it.blankIn, blankRes, textIn: it.textIn };
+    renderSolveQ();
+}
+function giveUp() {
+    const it = solve.items[solve.idx]; collectInputs(it);
+    const blankRes = {}; solveKind(it.q).blanks.forEach((a, bi) => { if (a) blankRes[bi] = false; });
+    solve.results[solve.idx] = { correct: false, picked: it.picked || [], blankIn: it.blankIn, blankRes, textIn: it.textIn, gaveUp: true };
+    renderSolveQ();
+}
+function selfGrade(ok) {
+    const it = solve.items[solve.idx];
+    solve.results[solve.idx] = { correct: ok, picked: it.picked || [], blankIn: it.blankIn || {}, blankRes: {}, textIn: it.textIn, selfGraded: true };
+    renderSolveQ();
+}
+function overrideCorrect() { const r = solve.results[solve.idx]; r.correct = true; r.selfGraded = true; Object.keys(r.blankRes).forEach(k => r.blankRes[k] = true); renderSolveQ(); }
+function nextSolve() {
+    if (solve.idx + 1 < solve.items.length) { solve.idx++; renderSolveQ(); }
+    else finishSolve();
+}
+// 풀이 기록 저장 (문제별 시도/오답 횟수, 시험지별 최근 점수)
+function recordSolve() {
+    const byExam = new Map();
+    solve.items.forEach((it, i) => {
+        const r = solve.results[i]; if (!r || r.recorded) return;
+        r.recorded = true;
+        it.q.tries = (it.q.tries || 0) + 1;
+        if (!r.correct) it.q.wrongs = (it.q.wrongs || 0) + 1;
+        it.q.lastWrong = !r.correct;
+        const e = byExam.get(it.ex) || { correct: 0, total: 0 }; e.total++; if (r.correct) e.correct++; byExam.set(it.ex, e);
+    });
+    byExam.forEach((v, ex) => ex.lastSolve = { date: today(), correct: v.correct, total: v.total });
+    if (byExam.size) save();
+}
+function finishSolve() {
+    recordSolve();
+    const total = solve.items.length, correct = solve.results.filter(r => r?.correct).length;
+    const wrong = solve.items.map((it, i) => ({ it, i, r: solve.results[i] })).filter(x => !x.r?.correct);
+    const pct = total ? Math.round(correct / total * 100) : 0;
+    document.getElementById('solveCount').textContent = '완료';
+    document.getElementById('solveBar').style.width = '100%';
+    document.getElementById('solveBody').innerHTML = `
+    <div class="animate-fade-in space-y-4">
+        <div class="bg-white border border-slate-200 rounded-2xl p-6 text-center">
+            <div class="text-5xl mb-2">${pct === 100 ? '🎉' : pct >= 70 ? '👍' : '💪'}</div>
+            <div class="text-3xl font-extrabold">${correct} <span class="text-slate-400 text-xl">/ ${total}</span></div>
+            <div class="text-sm font-bold ${pct === 100 ? 'text-emerald-600' : 'text-slate-500'} mt-1">${pct}점${pct === 100 ? ' · 모두 맞혔어요!' : ''}</div>
+        </div>
+        ${wrong.length ? `<div class="bg-white border border-slate-200 rounded-2xl p-4">
+            <div class="text-xs font-bold text-slate-500 mb-2">틀린 문제 ${wrong.length}개</div>
+            <div class="space-y-2">${wrong.map(({ it, i }) => `<div class="text-sm border-l-4 border-red-300 pl-3 py-1">
+                <div class="text-slate-700 line-clamp-2"><b>${i + 1}.</b> ${renderBlankText(it.q.text, 'answer')}</div>
+                <div class="text-xs mt-0.5"><b>정답</b> <span class="text-rose-600 font-bold">${answerLabel({ q: it.q, choiceOrder: it.choiceOrder })}</span></div></div>`).join('')}</div>
+        </div>` : ''}
+        <div class="grid gap-2 pb-10">
+            ${wrong.length ? `<button onclick="retryWrong()" class="bg-rose-600 hover:bg-rose-500 text-white font-extrabold py-3.5 rounded-2xl"><i class="fa-solid fa-rotate-right mr-1"></i>틀린 문제만 다시 풀기</button>` : ''}
+            <button onclick="startSolve()" class="bg-white border border-slate-200 hover:bg-slate-50 font-bold py-3 rounded-2xl"><i class="fa-solid fa-repeat mr-1"></i>처음부터 다시</button>
+            <button onclick="closeSolve()" class="bg-slate-900 hover:bg-slate-800 text-white font-bold py-3 rounded-2xl">닫기</button>
+        </div>
+    </div>`;
+}
+function retryWrong() { startSolve(solve.items.filter((_, i) => !solve.results[i]?.correct)); }
+function closeSolve() {
+    if (solve?.items && solve.results.some((r, i) => r && !r.recorded) && solve.results.length < solve.items.length) {
+        if (!confirm('그만 풀까요? 지금까지 푼 문제는 기록돼요.')) return;
+    }
+    if (solve?.items) recordSolve();
+    solve = null; solving = false;
+    document.getElementById('solveOverlay').classList.add('hidden');
+    flushPendingRemote();
+    render();
+}
+document.addEventListener('keydown', e => {
+    if (!solve?.items || document.getElementById('solveOverlay').classList.contains('hidden')) return;
+    const res = solve.results[solve.idx]; const it = solve.items[solve.idx];
+    if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        if (res) nextSolve(); else if (!it.reveal) checkSolve();
+    } else if (!res && /^[1-9]$/.test(e.key) && !/INPUT|TEXTAREA/.test(document.activeElement?.tagName)) {
+        const orig = it.choiceOrder[+e.key - 1]; if (orig != null) pickChoice(orig);
+    }
+});
+
 // ── 백업 ──
 function exportJSON() {
     const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
@@ -1065,7 +1422,13 @@ function importJSON(e) {
         try {
             const data = normalize(JSON.parse(reader.result));
             if (!confirm(`백업을 불러올까요?\n폴더 ${data.folders.length}개, 시험지 ${data.exams.length}개\n현재 데이터는 백업 내용으로 바뀝니다.`)) return;
-            state = data; ensureDefaultFolder(); ui.examId = null; ui.folderId = 'all'; save(); saveUI(); render();
+            // 백업에 없는 기존 항목은 지운 것으로 기록하고, 불러온 항목은 모두 최신으로 표시
+            const keep = new Set([...data.folders, ...data.exams].map(x => x.id));
+            const now = Date.now();
+            for (const id of snap.keys()) if (!keep.has(id)) data.deleted[id] = now;
+            for (const id of keep) delete data.deleted[id];
+            state = data; ensureDefaultFolder(); snap = new Map();
+            ui.examId = null; ui.folderId = 'all'; save(); saveUI(); render();
         } catch (err) { alert('올바른 백업 파일이 아니에요.'); }
     };
     reader.readAsText(file); e.target.value = '';
