@@ -1,0 +1,835 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>오답노트</title>
+    <meta name="theme-color" content="#e11d48">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="오답노트">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='90'>📝</text></svg>">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        @keyframes fadeIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+        .animate-fade-in { animation: fadeIn 0.2s ease-out; }
+        html, body { height: 100%; overflow: hidden; }
+        #app { display: flex; height: 100vh; overflow: hidden; }
+        #sidebar { width: 272px; flex-shrink: 0; display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+        #mainArea { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+        @media (max-width: 767px) {
+            #sidebar { position: fixed; top: 0; left: 0; bottom: 0; z-index: 100; transform: translateX(-100%); transition: transform 0.3s ease; }
+            #sidebar.open { transform: translateX(0); }
+            #overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:99; }
+            #overlay.show { display: block; }
+        }
+        .drag-over { outline: 2px dashed #e11d48; outline-offset: -2px; background: #fff1f2 !important; }
+
+        /* 문제 입력 에디터 */
+        .q-editor { min-height: 72px; outline: none; white-space: pre-wrap; word-break: break-word; line-height: 2; }
+        .q-editor:empty::before { content: attr(data-placeholder); color: #94a3b8; }
+        .q-editor .blank, .paper .blank {
+            display: inline-block; border-bottom: 1.5px solid currentColor; min-width: 4em;
+            height: 1.3em; line-height: 1.3em; vertical-align: baseline; text-align: center; margin: 0 2px;
+        }
+        .q-editor .blank { color: #e11d48; cursor: pointer; font-size: 0.9em; padding: 0 4px; background: #fff1f2; border-radius: 3px 3px 0 0; user-select: none; }
+        .q-editor .blank:hover { background: #ffe4e6; }
+        .q-editor .blank:empty::after { content: '\00a0'; }
+        .choice-mark.correct { background: #e11d48; color: #fff; border-color: #e11d48; }
+
+        /* 시험지 미리보기 & 인쇄 */
+        #paperOverlay { position: fixed; inset: 0; background: #e2e8f0; z-index: 300; overflow-y: auto; }
+        #paperOverlay.hidden { display: none; }
+        .paper-sheet { background: #fff; width: 210mm; max-width: 100%; min-height: 297mm; margin: 0 auto 24px; padding: 14mm 14mm 16mm; box-shadow: 0 10px 30px rgba(0,0,0,0.12); color: #000;
+            font-family: 'Batang', 'Nanum Myeongjo', 'Noto Serif KR', serif; }
+        .paper-head { text-align: center; border-bottom: 3px double #000; padding-bottom: 8px; margin-bottom: 10px; }
+        .paper-head .kind { display: inline-block; font-size: 12px; border: 1px solid #000; padding: 1px 10px; border-radius: 20px; margin-bottom: 6px; font-family: 'Malgun Gothic', sans-serif; }
+        .paper-head h1 { font-size: 24px; font-weight: 800; letter-spacing: 2px; }
+        .paper-meta { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-size: 12px; margin-top: 8px; font-family: 'Malgun Gothic', sans-serif; }
+        .paper-meta .box { border: 1px solid #000; display: flex; }
+        .paper-meta .box span { padding: 3px 8px; }
+        .paper-meta .box span:first-child { background: #f1f5f9; border-right: 1px solid #000; font-weight: 700; }
+        .paper-meta .box span.fill { min-width: 70px; }
+        .paper-qs.cols-2 { column-count: 2; column-gap: 9mm; column-rule: 1px solid #000; }
+        .paper .q { break-inside: avoid; page-break-inside: avoid; margin-bottom: 22px; font-size: 14px; line-height: 1.9; }
+        .paper .q .q-no { font-weight: 800; margin-right: 4px; }
+        .paper .q .q-src { font-size: 11px; color: #555; font-family: 'Malgun Gothic', sans-serif; }
+        .paper .q .choices { margin-top: 6px; padding-left: 4px; }
+        .paper .q .choices div { padding-left: 1.5em; text-indent: -1.5em; }
+        .paper .q .write-area { margin-top: 8px; border-bottom: 1px solid #94a3b8; height: 28px; }
+        .paper .ans .blank.filled { color: #e11d48; font-weight: 700; }
+        .paper .ans .choices div.correct { color: #e11d48; font-weight: 700; }
+        .paper .ans .exp { margin-top: 4px; font-size: 12.5px; background: #f8fafc; border-left: 3px solid #e11d48; padding: 4px 8px; line-height: 1.7; font-family: 'Malgun Gothic', sans-serif; }
+        .ans-table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-bottom: 18px; font-size: 13px; font-family: 'Malgun Gothic', sans-serif; }
+        .ans-table th, .ans-table td { border: 1px solid #000; padding: 4px 6px; text-align: center; }
+        .ans-table th { background: #f1f5f9; }
+        .ans-table td.a { color: #e11d48; font-weight: 800; }
+        .paper-foot { text-align: center; font-size: 11px; color: #64748b; margin-top: 12px; font-family: 'Malgun Gothic', sans-serif; }
+        @media (max-width: 820px) { .paper-sheet { padding: 6mm; min-height: 0; } .paper-qs.cols-2 { column-count: 1; column-rule: none; } }
+        @page { size: A4; margin: 12mm; }
+        @media print {
+            html, body { height: auto !important; overflow: visible !important; background: #fff !important; }
+            body > *:not(#paperOverlay) { display: none !important; }
+            #paperOverlay { position: static !important; overflow: visible !important; background: #fff !important; }
+            #paperOverlay .no-print { display: none !important; }
+            .paper-sheet { box-shadow: none !important; width: auto !important; min-height: 0 !important; margin: 0 !important; padding: 0 !important; }
+            .paper-sheet + .paper-sheet { page-break-before: always; break-before: page; }
+            .paper-qs.cols-2 { column-count: 2 !important; column-rule: 1px solid #000 !important; }
+            * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        }
+    </style>
+</head>
+<body class="font-sans text-slate-800 bg-slate-100 antialiased">
+
+<div id="overlay" onclick="closeSidebar()"></div>
+
+<div id="syncToast" class="hidden fixed top-4 left-1/2 -translate-x-1/2 z-[400] bg-slate-900 text-white text-xs font-bold px-4 py-2 rounded-full shadow-xl flex items-center gap-2">
+    <span id="syncDot" class="w-2 h-2 rounded-full bg-yellow-400"></span>
+    <span id="syncMsg">동기화 중...</span>
+</div>
+
+<!-- 폴더 선택 모달 (시험지/폴더 이동) -->
+<div id="moveModal" class="hidden fixed inset-0 bg-black/60 z-[150] flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm">
+        <h3 class="font-extrabold text-slate-800 mb-1">폴더로 이동</h3>
+        <p id="moveLabel" class="text-xs text-slate-500 mb-4"></p>
+        <div id="moveList" class="space-y-1.5 max-h-64 overflow-y-auto"></div>
+        <button onclick="closeMoveModal()" class="mt-4 w-full bg-slate-100 hover:bg-slate-200 text-slate-700 py-2.5 rounded-xl text-sm font-bold transition">취소</button>
+    </div>
+</div>
+
+<div id="app">
+    <!-- 사이드바 -->
+    <aside id="sidebar" class="bg-slate-900 text-slate-200">
+        <div class="p-4 border-b border-slate-800 flex items-center justify-between">
+            <div>
+                <div class="text-lg font-extrabold text-white"><i class="fa-solid fa-file-pen text-rose-400 mr-1.5"></i>오답노트</div>
+                <div class="text-[11px] text-slate-400 mt-0.5 flex items-center gap-1.5"><span id="syncDot2" class="w-1.5 h-1.5 rounded-full bg-yellow-400"></span><span id="syncLabel">연결 중...</span></div>
+            </div>
+            <a href="./wordbook.html" class="text-[11px] text-slate-400 hover:text-white border border-slate-700 rounded-lg px-2 py-1" title="영단어장으로">📖 단어장</a>
+        </div>
+        <div class="p-3 flex gap-2">
+            <button onclick="createFolder(null)" class="flex-1 bg-slate-800 hover:bg-slate-700 text-xs font-bold py-2 rounded-lg transition"><i class="fa-solid fa-folder-plus mr-1"></i>새 폴더</button>
+            <button onclick="createExam()" class="flex-1 bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold py-2 rounded-lg transition"><i class="fa-solid fa-plus mr-1"></i>새 시험지</button>
+        </div>
+        <div class="flex-1 overflow-y-auto px-2 pb-3" id="folderTree"></div>
+        <div class="p-3 border-t border-slate-800 grid grid-cols-2 gap-2 text-[11px]">
+            <button onclick="exportJSON()" class="bg-slate-800 hover:bg-slate-700 py-2 rounded-lg"><i class="fa-solid fa-download mr-1"></i>백업 저장</button>
+            <label class="bg-slate-800 hover:bg-slate-700 py-2 rounded-lg text-center cursor-pointer"><i class="fa-solid fa-upload mr-1"></i>백업 불러오기<input type="file" accept=".json,application/json" class="hidden" onchange="importJSON(event)"></label>
+        </div>
+    </aside>
+
+    <!-- 메인 -->
+    <main id="mainArea">
+        <header class="bg-white border-b border-slate-200 px-4 py-3 flex items-center gap-3">
+            <button onclick="openSidebar()" class="md:hidden w-9 h-9 rounded-lg bg-slate-100 text-slate-600"><i class="fa-solid fa-bars"></i></button>
+            <div id="breadcrumb" class="flex-1 min-w-0 text-sm font-bold text-slate-700 truncate"></div>
+            <div id="headerActions" class="flex items-center gap-2"></div>
+        </header>
+        <div id="mainScroll" class="flex-1 overflow-y-auto">
+            <div id="mainContent" class="max-w-4xl mx-auto p-4 sm:p-6"></div>
+        </div>
+    </main>
+</div>
+
+<!-- 시험지 미리보기 / PDF -->
+<div id="paperOverlay" class="hidden">
+    <div class="no-print sticky top-0 z-10 bg-white border-b border-slate-200 shadow-sm">
+        <div class="max-w-5xl mx-auto px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+            <button onclick="closePaper()" class="bg-slate-500 hover:bg-slate-600 text-white font-bold px-3 py-2 rounded-lg"><i class="fa-solid fa-arrow-left mr-1"></i>닫기</button>
+            <div class="flex rounded-lg overflow-hidden border border-slate-300 text-xs font-bold" id="printModeGroup">
+                <button data-mode="both" class="px-3 py-2">문제지+답지</button>
+                <button data-mode="question" class="px-3 py-2 border-l border-slate-300">문제지만</button>
+                <button data-mode="answer" class="px-3 py-2 border-l border-slate-300">답지만</button>
+            </div>
+            <div class="flex rounded-lg overflow-hidden border border-slate-300 text-xs font-bold" id="colsGroup">
+                <button data-cols="2" class="px-3 py-2">2단</button>
+                <button data-cols="1" class="px-3 py-2 border-l border-slate-300">1단</button>
+            </div>
+            <label class="flex items-center gap-1.5 text-xs font-bold text-slate-600 cursor-pointer"><input type="checkbox" id="optExplain"> 답지에 해설 포함</label>
+            <label class="flex items-center gap-1.5 text-xs font-bold text-slate-600 cursor-pointer"><input type="checkbox" id="optShuffleQ"> 문제 순서 섞기</label>
+            <label class="flex items-center gap-1.5 text-xs font-bold text-slate-600 cursor-pointer"><input type="checkbox" id="optShuffleC"> 선지 순서 섞기</label>
+            <label class="flex items-center gap-1.5 text-xs font-bold text-slate-600 cursor-pointer"><input type="checkbox" id="optNameBox" checked> 이름/점수란</label>
+            <button id="reshuffleBtn" onclick="reshuffle()" class="hidden bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold px-3 py-2 rounded-lg"><i class="fa-solid fa-shuffle mr-1"></i>다시 섞기</button>
+            <div class="flex-1"></div>
+            <button onclick="printPaper()" class="bg-rose-600 hover:bg-rose-500 text-white font-bold px-4 py-2 rounded-lg"><i class="fa-solid fa-file-pdf mr-1"></i>PDF로 저장</button>
+        </div>
+        <div class="max-w-5xl mx-auto px-4 pb-2 text-[11px] text-slate-500">인쇄 창에서 대상을 <b>'PDF로 저장'</b>으로 고르면 PDF 파일로 저장돼요. 문제지와 답지를 따로 파일로 만들려면 '문제지만', '답지만'을 각각 골라 저장하세요.</div>
+    </div>
+    <div id="paperArea" class="py-6 px-2"></div>
+</div>
+
+<!-- Firebase (영단어장과 같은 프로젝트, 별도 문서에 저장) -->
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import { getFirestore, doc, onSnapshot, setDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+    const app = initializeApp({
+        apiKey:"AIzaSyAeplPxURZu9o0OQAFY5RBh1BP0P0dLcSc",
+        authDomain:"my-eng-wordbook.firebaseapp.com",
+        projectId:"my-eng-wordbook",
+        storageBucket:"my-eng-wordbook.firebasestorage.app",
+        messagingSenderId:"613424514679",
+        appId:"1:613424514679:web:94ecf9cc4898db06876872"
+    });
+    const db = getFirestore(app);
+    const DATA_DOC = doc(db, 'wordbook', 'wrongnote');
+    window._saveToFirestore = async (data) => {
+        try { window.showSync('저장 중...','#facc15'); await setDoc(DATA_DOC, data); window.showSync('동기화됨','#34d399'); }
+        catch(e) { window.showSync('저장 실패','#f87171'); }
+    };
+    onSnapshot(DATA_DOC, snap => {
+        window.showSync('동기화됨','#34d399');
+        window._onRemote(snap.exists() ? snap.data() : null);
+    }, () => { window.showSync('오프라인','#f87171'); });
+</script>
+
+<script>
+const LS_KEY = 'wrongnote_data_v1';
+const LS_UI = 'wrongnote_ui_v1';
+const CIRCLED = ['①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩'];
+const MAX_CHOICES = 10;
+
+let state = { folders: [], exams: [], updatedAt: 0 };
+let ui = { folderId: 'all', examId: null, search: '', collapsed: [] };
+let selectedExams = new Set();
+let pendingRemote = null;
+let saveTimer = null;
+
+// ── 유틸 ──
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+const today = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 10); };
+function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function choiceMark(i) { return CIRCLED[i] || `(${i + 1})`; }
+function fmtDate(d) { return d ? d.replace(/-/g, '.') : '-'; }
+function shuffleArr(a) { const r = [...a]; for (let i = r.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [r[i], r[j]] = [r[j], r[i]]; } return r; }
+
+window.showSync = function (msg, color) {
+    ['syncDot', 'syncDot2'].forEach(id => { const el = document.getElementById(id); if (el) el.style.background = color; });
+    const lb = document.getElementById('syncLabel'); if (lb) lb.textContent = msg;
+    const t = document.getElementById('syncToast'), m = document.getElementById('syncMsg');
+    if (m) m.textContent = msg;
+    if (t) { t.classList.remove('hidden'); clearTimeout(window._tt); window._tt = setTimeout(() => t.classList.add('hidden'), 1500); }
+};
+
+// ── 저장 / 불러오기 ──
+function normalize(data) {
+    const d = data && typeof data === 'object' ? data : {};
+    const folders = Array.isArray(d.folders) ? d.folders : [];
+    const exams = Array.isArray(d.exams) ? d.exams : [];
+    exams.forEach(e => {
+        e.questions = Array.isArray(e.questions) ? e.questions : [];
+        e.questions.forEach(q => {
+            q.choices = Array.isArray(q.choices) ? q.choices : [];
+            q.answers = Array.isArray(q.answers) ? q.answers : [];
+            q.text = q.text || ''; q.answerText = q.answerText || ''; q.explanation = q.explanation || '';
+        });
+    });
+    return { folders, exams, updatedAt: d.updatedAt || 0 };
+}
+function ensureDefaultFolder() {
+    if (state.folders.length === 0) state.folders.push({ id: uid(), name: '기본 폴더', parentId: null });
+    const ids = new Set(state.folders.map(f => f.id));
+    state.exams.forEach(e => { if (!ids.has(e.folderId)) e.folderId = state.folders[0].id; });
+}
+function loadLocal() {
+    try { state = normalize(JSON.parse(localStorage.getItem(LS_KEY) || 'null')); } catch (e) { state = normalize(null); }
+    try { Object.assign(ui, JSON.parse(localStorage.getItem(LS_UI) || '{}')); } catch (e) {}
+    ensureDefaultFolder();
+}
+function saveUI() { try { localStorage.setItem(LS_UI, JSON.stringify(ui)); } catch (e) {} }
+function save() {
+    state.updatedAt = Date.now();
+    try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (e) {}
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => { if (window._saveToFirestore) window._saveToFirestore(JSON.parse(JSON.stringify(state))); }, 700);
+}
+function isEditing() { const a = document.activeElement; return !!(a && document.getElementById('mainContent').contains(a) && (a.isContentEditable || /INPUT|TEXTAREA|SELECT/.test(a.tagName))); }
+window._onRemote = function (data) {
+    if (!data) { if (state.exams.length || state.folders.length > 1) save(); return; }
+    const remote = normalize(data);
+    if (remote.updatedAt > state.updatedAt) {
+        if (isEditing()) { pendingRemote = remote; return; }
+        applyRemote(remote);
+    } else if (remote.updatedAt < state.updatedAt) {
+        save();
+    }
+};
+function applyRemote(remote) {
+    state = remote; pendingRemote = null;
+    ensureDefaultFolder();
+    try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (e) {}
+    if (ui.examId && !getExam(ui.examId)) ui.examId = null;
+    render();
+}
+document.addEventListener('focusout', () => setTimeout(() => { if (pendingRemote && !isEditing() && pendingRemote.updatedAt > state.updatedAt) applyRemote(pendingRemote); }, 300));
+
+// ── 조회 헬퍼 ──
+const getFolder = id => state.folders.find(f => f.id === id);
+const getExam = id => state.exams.find(e => e.id === id);
+const childFolders = pid => state.folders.filter(f => (f.parentId || null) === pid).sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+function descendantIds(id) { const r = [id]; childFolders(id).forEach(c => r.push(...descendantIds(c.id))); return r; }
+function folderPath(id) { const p = []; let f = getFolder(id); while (f) { p.unshift(f.name); f = getFolder(f.parentId); } return p.join(' / '); }
+function examsIn(folderId) {
+    if (folderId === 'all') return state.exams;
+    const ids = new Set(descendantIds(folderId));
+    return state.exams.filter(e => ids.has(e.folderId));
+}
+
+// ── 사이드바 ──
+function openSidebar() { document.getElementById('sidebar').classList.add('open'); document.getElementById('overlay').classList.add('show'); }
+function closeSidebar() { document.getElementById('sidebar').classList.remove('open'); document.getElementById('overlay').classList.remove('show'); }
+
+function renderFolderNode(f, depth) {
+    const kids = childFolders(f.id);
+    const collapsed = ui.collapsed.includes(f.id);
+    const active = ui.folderId === f.id && !ui.examId;
+    const count = examsIn(f.id).length;
+    let html = `<div class="group flex items-center rounded-lg text-sm ${active ? 'bg-rose-600 text-white' : 'hover:bg-slate-800'}" style="padding-left:${depth * 14 + 4}px"
+        draggable="true" ondragstart="onFolderDragStart(event,'${f.id}')" ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDropFolder(event,'${f.id}')">
+        <button onclick="toggleCollapse('${f.id}')" class="w-5 h-7 text-[10px] text-slate-400 ${kids.length ? '' : 'invisible'}"><i class="fa-solid fa-chevron-${collapsed ? 'right' : 'down'}"></i></button>
+        <button onclick="selectFolder('${f.id}')" class="flex-1 text-left py-1.5 truncate"><i class="fa-solid fa-folder${active ? '-open' : ''} mr-1.5 ${active ? '' : 'text-amber-400'}"></i>${escapeHtml(f.name)} <span class="text-[10px] opacity-60">${count}</span></button>
+        <div class="hidden group-hover:flex items-center gap-0.5 pr-1 text-[11px]">
+            <button onclick="createFolder('${f.id}')" title="하위 폴더" class="w-6 h-6 rounded hover:bg-white/20"><i class="fa-solid fa-plus"></i></button>
+            <button onclick="renameFolder('${f.id}')" title="이름 변경" class="w-6 h-6 rounded hover:bg-white/20"><i class="fa-solid fa-pen"></i></button>
+            <button onclick="openMoveModal('folder','${f.id}')" title="폴더 이동" class="w-6 h-6 rounded hover:bg-white/20"><i class="fa-solid fa-arrow-right-to-bracket"></i></button>
+            <button onclick="deleteFolder('${f.id}')" title="삭제" class="w-6 h-6 rounded hover:bg-white/20"><i class="fa-solid fa-trash"></i></button>
+        </div>
+    </div>`;
+    if (!collapsed) kids.forEach(k => html += renderFolderNode(k, depth + 1));
+    return html;
+}
+function renderSidebar() {
+    const allActive = ui.folderId === 'all' && !ui.examId;
+    document.getElementById('folderTree').innerHTML =
+        `<button onclick="selectFolder('all')" class="w-full text-left text-sm px-3 py-1.5 rounded-lg mb-1 ${allActive ? 'bg-rose-600 text-white' : 'hover:bg-slate-800'}"
+            ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDropFolder(event,null)">
+            <i class="fa-solid fa-layer-group mr-1.5"></i>모든 시험지 <span class="text-[10px] opacity-60">${state.exams.length}</span></button>
+         <div class="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-3 mt-3 mb-1">폴더</div>` +
+        childFolders(null).map(f => renderFolderNode(f, 0)).join('');
+}
+function toggleCollapse(id) { const i = ui.collapsed.indexOf(id); i >= 0 ? ui.collapsed.splice(i, 1) : ui.collapsed.push(id); saveUI(); renderSidebar(); }
+function selectFolder(id) { ui.folderId = id; ui.examId = null; selectedExams.clear(); saveUI(); closeSidebar(); render(); }
+
+// ── 폴더 조작 ──
+function createFolder(parentId) {
+    const name = prompt('새 폴더 이름'); if (!name?.trim()) return;
+    const f = { id: uid(), name: name.trim(), parentId: parentId || null };
+    state.folders.push(f);
+    if (parentId) ui.collapsed = ui.collapsed.filter(x => x !== parentId);
+    ui.folderId = f.id; ui.examId = null; save(); saveUI(); render();
+}
+function renameFolder(id) {
+    const f = getFolder(id); const name = prompt('폴더 이름 변경', f.name); if (!name?.trim()) return;
+    f.name = name.trim(); save(); render();
+}
+function deleteFolder(id) {
+    const ids = descendantIds(id); const n = state.exams.filter(e => ids.includes(e.folderId)).length;
+    if (!confirm(`'${getFolder(id).name}' 폴더${ids.length > 1 ? '와 하위 폴더' : ''}를 삭제할까요?` + (n ? `\n안에 있는 시험지 ${n}개도 함께 삭제됩니다.` : ''))) return;
+    state.folders = state.folders.filter(f => !ids.includes(f.id));
+    state.exams = state.exams.filter(e => !ids.includes(e.folderId));
+    if (ids.includes(ui.folderId)) ui.folderId = 'all';
+    if (ui.examId && !getExam(ui.examId)) ui.examId = null;
+    ensureDefaultFolder(); save(); saveUI(); render();
+}
+
+// 드래그 앤 드롭: 시험지 → 폴더, 폴더 → 폴더
+let dragData = null;
+function onExamDragStart(e, id) { dragData = { type: 'exam', id }; e.dataTransfer.effectAllowed = 'move'; }
+function onFolderDragStart(e, id) { dragData = { type: 'folder', id }; e.dataTransfer.effectAllowed = 'move'; e.stopPropagation(); }
+function onDragOver(e) { if (!dragData) return; e.preventDefault(); e.currentTarget.classList.add('drag-over'); }
+function onDragLeave(e) { e.currentTarget.classList.remove('drag-over'); }
+function onDropFolder(e, folderId) {
+    e.preventDefault(); e.currentTarget.classList.remove('drag-over');
+    if (!dragData) return;
+    if (dragData.type === 'exam' && folderId) moveExamTo(dragData.id, folderId);
+    if (dragData.type === 'folder') moveFolderTo(dragData.id, folderId);
+    dragData = null;
+}
+function moveExamTo(examId, folderId) { const ex = getExam(examId); if (!ex) return; ex.folderId = folderId; save(); render(); }
+function moveFolderTo(id, parentId) {
+    if (parentId && descendantIds(id).includes(parentId)) { alert('자기 자신이나 하위 폴더로는 옮길 수 없어요.'); return; }
+    getFolder(id).parentId = parentId || null; save(); render();
+}
+function openMoveModal(type, id) {
+    const label = type === 'exam' ? `시험지: ${getExam(id).title || '(제목 없음)'}` : `폴더: ${getFolder(id).name}`;
+    document.getElementById('moveLabel').textContent = label;
+    const blocked = type === 'folder' ? descendantIds(id) : [];
+    const rows = [];
+    if (type === 'folder') rows.push(`<button onclick="moveFolderTo('${id}',null);closeMoveModal()" class="w-full text-left px-3 py-2 rounded-lg bg-slate-50 hover:bg-rose-50 text-sm font-bold"><i class="fa-solid fa-house mr-2 text-slate-400"></i>최상위</button>`);
+    (function walk(pid, depth) {
+        childFolders(pid).forEach(f => {
+            if (blocked.includes(f.id)) return;
+            const action = type === 'exam' ? `moveExamTo('${id}','${f.id}')` : `moveFolderTo('${id}','${f.id}')`;
+            rows.push(`<button onclick="${action};closeMoveModal()" class="w-full text-left px-3 py-2 rounded-lg bg-slate-50 hover:bg-rose-50 text-sm" style="padding-left:${12 + depth * 16}px"><i class="fa-solid fa-folder mr-2 text-amber-400"></i>${escapeHtml(f.name)}</button>`);
+            walk(f.id, depth + 1);
+        });
+    })(null, 0);
+    document.getElementById('moveList').innerHTML = rows.join('');
+    document.getElementById('moveModal').classList.remove('hidden');
+}
+function closeMoveModal() { document.getElementById('moveModal').classList.add('hidden'); }
+
+// ── 시험지 조작 ──
+function newQuestion() { return { id: uid(), text: '', choices: ['', '', '', '', ''], answers: [], answerText: '', explanation: '' }; }
+function createExam() {
+    let folderId = ui.folderId !== 'all' && getFolder(ui.folderId) ? ui.folderId : childFolders(null)[0].id;
+    const ex = { id: uid(), folderId, title: '', subject: '', solvedDate: today(), writtenDate: today(), memo: '', questions: [newQuestion()], createdAt: Date.now() };
+    state.exams.push(ex); ui.examId = ex.id; ui.folderId = folderId;
+    save(); saveUI(); closeSidebar(); render();
+    setTimeout(() => document.getElementById('examTitle')?.focus(), 50);
+}
+function openExam(id) { ui.examId = id; saveUI(); render(); document.getElementById('mainScroll').scrollTop = 0; }
+function closeExam() { ui.examId = null; saveUI(); render(); }
+function deleteExam(id) {
+    const ex = getExam(id); if (!confirm(`'${ex.title || '(제목 없음)'}' 시험지를 삭제할까요?`)) return;
+    state.exams = state.exams.filter(e => e.id !== id); selectedExams.delete(id);
+    if (ui.examId === id) ui.examId = null;
+    save(); saveUI(); render();
+}
+function duplicateExam(id) {
+    const src = getExam(id); const ex = JSON.parse(JSON.stringify(src));
+    ex.id = uid(); ex.title = (src.title || '(제목 없음)') + ' (복사본)'; ex.createdAt = Date.now();
+    ex.questions.forEach(q => q.id = uid());
+    state.exams.push(ex); save(); render();
+}
+
+// ── 메인 렌더 ──
+function render() {
+    renderSidebar();
+    const ex = ui.examId && getExam(ui.examId);
+    if (ex) renderEditor(ex); else { ui.examId = null; renderList(); }
+}
+
+function renderList() {
+    const fid = ui.folderId === 'all' || getFolder(ui.folderId) ? ui.folderId : 'all';
+    ui.folderId = fid;
+    document.getElementById('breadcrumb').innerHTML = fid === 'all' ? '<i class="fa-solid fa-layer-group text-rose-500 mr-1.5"></i>모든 시험지' : `<i class="fa-solid fa-folder-open text-amber-500 mr-1.5"></i>${escapeHtml(folderPath(fid))}`;
+    document.getElementById('headerActions').innerHTML = `<button onclick="createExam()" class="bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold px-3 py-2 rounded-lg"><i class="fa-solid fa-plus mr-1"></i>새 시험지</button>`;
+
+    const q = ui.search.trim().toLowerCase();
+    let list = examsIn(fid).filter(e => !q || (e.title + ' ' + e.subject + ' ' + e.memo).toLowerCase().includes(q));
+    list.sort((a, b) => (b.writtenDate || '').localeCompare(a.writtenDate || '') || b.createdAt - a.createdAt);
+    const subFolders = fid === 'all' ? [] : childFolders(fid);
+    [...selectedExams].forEach(id => { if (!getExam(id)) selectedExams.delete(id); });
+
+    const sel = selectedExams.size;
+    document.getElementById('mainContent').innerHTML = `
+    <div class="animate-fade-in">
+        <div class="flex flex-wrap items-center gap-2 mb-4">
+            <div class="relative flex-1 min-w-[180px]">
+                <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                <input id="searchInput" value="${escapeHtml(ui.search)}" oninput="ui.search=this.value;renderListKeepFocus()" placeholder="제목·과목·메모 검색" class="w-full pl-8 pr-3 py-2 rounded-xl border border-slate-200 bg-white text-sm outline-none focus:border-rose-400">
+            </div>
+            ${list.length ? `<button onclick="toggleSelectAll()" class="text-xs font-bold px-3 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50">${list.every(e => selectedExams.has(e.id)) ? '선택 해제' : '전체 선택'}</button>` : ''}
+        </div>
+        ${sel ? `<div class="sticky top-0 z-10 mb-4 bg-slate-900 text-white rounded-2xl px-4 py-3 flex flex-wrap items-center gap-2 shadow-lg">
+            <span class="text-sm font-bold flex-1">${sel}개 시험지 선택됨</span>
+            <button onclick="openPaper([...selectedExams])" class="bg-rose-600 hover:bg-rose-500 text-xs font-bold px-3 py-2 rounded-lg"><i class="fa-solid fa-layer-group mr-1"></i>합쳐서 시험지 만들기</button>
+            <button onclick="selectedExams.clear();renderList()" class="bg-white/10 hover:bg-white/20 text-xs font-bold px-3 py-2 rounded-lg">취소</button>
+        </div>` : ''}
+        ${subFolders.length ? `<div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-5">${subFolders.map(f => `
+            <button onclick="selectFolder('${f.id}')" ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDropFolder(event,'${f.id}')"
+                class="bg-white border border-slate-200 hover:border-amber-300 rounded-xl px-3 py-3 text-left text-sm font-bold truncate">
+                <i class="fa-solid fa-folder text-amber-400 mr-1.5"></i>${escapeHtml(f.name)} <span class="text-[10px] text-slate-400">${examsIn(f.id).length}</span></button>`).join('')}</div>` : ''}
+        ${list.length ? `<div class="grid gap-3">${list.map(examCard).join('')}</div>` : `
+            <div class="text-center py-16 text-slate-400">
+                <i class="fa-regular fa-file-lines text-5xl mb-3"></i>
+                <p class="text-sm font-bold">${q ? '검색 결과가 없어요' : '아직 시험지가 없어요'}</p>
+                ${q ? '' : `<button onclick="createExam()" class="mt-4 bg-rose-600 hover:bg-rose-500 text-white text-sm font-bold px-4 py-2 rounded-xl"><i class="fa-solid fa-plus mr-1"></i>첫 오답 시험지 만들기</button>`}
+            </div>`}
+    </div>`;
+}
+function renderListKeepFocus() {
+    const el = document.getElementById('searchInput'); const pos = el?.selectionStart;
+    renderList();
+    const n = document.getElementById('searchInput'); if (n) { n.focus(); n.setSelectionRange(pos, pos); }
+}
+function examCard(e) {
+    const checked = selectedExams.has(e.id);
+    return `<div draggable="true" ondragstart="onExamDragStart(event,'${e.id}')" class="bg-white border ${checked ? 'border-rose-400 ring-2 ring-rose-100' : 'border-slate-200'} rounded-2xl p-4 flex items-start gap-3 hover:shadow-md transition">
+        <input type="checkbox" ${checked ? 'checked' : ''} onchange="toggleSelect('${e.id}')" class="mt-1.5 w-4 h-4 accent-rose-600 cursor-pointer" title="합쳐서 출력할 시험지 선택">
+        <button onclick="openExam('${e.id}')" class="flex-1 min-w-0 text-left">
+            <div class="flex items-center gap-2 flex-wrap">
+                ${e.subject ? `<span class="text-[10px] font-bold bg-rose-50 text-rose-600 px-2 py-0.5 rounded-full">${escapeHtml(e.subject)}</span>` : ''}
+                <span class="font-extrabold text-slate-800 truncate">${escapeHtml(e.title || '(제목 없음)')}</span>
+            </div>
+            <div class="text-xs text-slate-500 mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
+                <span><i class="fa-regular fa-calendar-check mr-1"></i>푼 날짜 ${fmtDate(e.solvedDate)}</span>
+                <span><i class="fa-solid fa-pen-to-square mr-1"></i>오답 작성 ${fmtDate(e.writtenDate)}</span>
+                <span><i class="fa-solid fa-list-ol mr-1"></i>${e.questions.length}문항</span>
+            </div>
+            ${ui.folderId === 'all' ? `<div class="text-[10px] text-slate-400 mt-1"><i class="fa-solid fa-folder mr-1"></i>${escapeHtml(folderPath(e.folderId))}</div>` : ''}
+        </button>
+        <div class="flex gap-1 text-slate-400 text-xs">
+            <button onclick="openPaper(['${e.id}'])" title="시험지 보기/PDF" class="w-8 h-8 rounded-lg hover:bg-rose-50 hover:text-rose-600"><i class="fa-solid fa-print"></i></button>
+            <button onclick="openMoveModal('exam','${e.id}')" title="폴더 이동" class="w-8 h-8 rounded-lg hover:bg-slate-100 hover:text-slate-700"><i class="fa-solid fa-folder-tree"></i></button>
+            <button onclick="duplicateExam('${e.id}')" title="복제" class="w-8 h-8 rounded-lg hover:bg-slate-100 hover:text-slate-700"><i class="fa-regular fa-copy"></i></button>
+            <button onclick="deleteExam('${e.id}')" title="삭제" class="w-8 h-8 rounded-lg hover:bg-red-50 hover:text-red-500"><i class="fa-solid fa-trash"></i></button>
+        </div>
+    </div>`;
+}
+function toggleSelect(id) { selectedExams.has(id) ? selectedExams.delete(id) : selectedExams.add(id); renderList(); }
+function toggleSelectAll() {
+    const q = ui.search.trim().toLowerCase();
+    const list = examsIn(ui.folderId).filter(e => !q || (e.title + ' ' + e.subject + ' ' + e.memo).toLowerCase().includes(q));
+    if (list.every(e => selectedExams.has(e.id))) list.forEach(e => selectedExams.delete(e.id)); else list.forEach(e => selectedExams.add(e.id));
+    renderList();
+}
+
+// ── 문제 텍스트 <-> 에디터 ──
+// 저장 형식: 일반 텍스트 + 빈칸 토큰 {{blank:정답(URI 인코딩)}}
+const BLANK_RE = /\{\{blank:([^}]*)\}\}/g;
+function blankWidth(ans) { return Math.min(18, Math.max(4, [...ans].length * 1.1 + 1.5)); }
+function renderBlankText(text, mode) {
+    // mode: 'editor' | 'question' | 'answer'
+    let out = '', last = 0, m; BLANK_RE.lastIndex = 0;
+    while ((m = BLANK_RE.exec(text))) {
+        out += escapeHtml(text.slice(last, m.index));
+        const ans = decodeURIComponent(m[1] || '');
+        if (mode === 'editor') out += `<span class="blank" contenteditable="false" data-ans="${escapeHtml(ans)}" title="클릭해서 빈칸 정답 수정">${escapeHtml(ans)}</span>`;
+        else if (mode === 'answer' && ans) out += `<span class="blank filled" style="min-width:${blankWidth(ans)}em">${escapeHtml(ans)}</span>`;
+        else out += `<span class="blank" style="width:${blankWidth(ans)}em"></span>`;
+        last = m.index + m[0].length;
+    }
+    out += escapeHtml(text.slice(last));
+    return mode === 'editor' ? out : out.replace(/\n/g, '<br>');
+}
+function blankAnswers(text) { const r = []; let m; BLANK_RE.lastIndex = 0; while ((m = BLANK_RE.exec(text))) r.push(decodeURIComponent(m[1] || '')); return r; }
+function serializeEditor(el) {
+    let out = '';
+    el.childNodes.forEach(n => {
+        if (n.nodeType === 3) out += n.nodeValue.replace(/​/g, '');
+        else if (n.nodeName === 'BR') out += '\n';
+        else if (n.classList?.contains('blank')) out += `{{blank:${encodeURIComponent(n.dataset.ans || '')}}}`;
+        else if (n.nodeName === 'DIV' || n.nodeName === 'P') { if (out && !out.endsWith('\n')) out += '\n'; out += serializeEditor(n); }
+        else out += serializeEditor(n);
+    });
+    return out;
+}
+
+// ── 편집 화면 ──
+function renderEditor(ex) {
+    document.getElementById('breadcrumb').innerHTML = `<button onclick="closeExam()" class="text-slate-400 hover:text-slate-700 mr-2"><i class="fa-solid fa-arrow-left"></i></button><span class="text-slate-400 font-normal">${escapeHtml(folderPath(ex.folderId))} /</span> ${escapeHtml(ex.title || '(제목 없음)')}`;
+    document.getElementById('headerActions').innerHTML = `
+        <button onclick="openPaper(['${ex.id}'])" class="bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold px-3 py-2 rounded-lg"><i class="fa-solid fa-print mr-1"></i><span class="hidden sm:inline">시험지 보기 / </span>PDF</button>`;
+    const folderOpts = [];
+    (function walk(pid, depth) { childFolders(pid).forEach(f => { folderOpts.push(`<option value="${f.id}" ${f.id === ex.folderId ? 'selected' : ''}>${'　'.repeat(depth)}${escapeHtml(f.name)}</option>`); walk(f.id, depth + 1); }); })(null, 0);
+
+    document.getElementById('mainContent').innerHTML = `
+    <div class="animate-fade-in space-y-4">
+        <section class="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5">
+            <input id="examTitle" value="${escapeHtml(ex.title)}" oninput="setExamField('title',this.value)" placeholder="시험지 제목 (예: 3월 모의고사 민법 오답)"
+                class="w-full text-xl font-extrabold outline-none border-b border-transparent focus:border-rose-300 pb-1 mb-4">
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                <label class="block"><span class="font-bold text-slate-500">과목 / 출처</span>
+                    <input value="${escapeHtml(ex.subject)}" oninput="setExamField('subject',this.value)" placeholder="예: 민법" class="mt-1 w-full border border-slate-200 rounded-lg px-2.5 py-2 text-sm outline-none focus:border-rose-400"></label>
+                <label class="block"><span class="font-bold text-slate-500">푼 날짜</span>
+                    <input type="date" value="${ex.solvedDate || ''}" onchange="setExamField('solvedDate',this.value)" class="mt-1 w-full border border-slate-200 rounded-lg px-2.5 py-2 text-sm outline-none focus:border-rose-400"></label>
+                <label class="block"><span class="font-bold text-slate-500">오답 작성일</span>
+                    <input type="date" value="${ex.writtenDate || ''}" onchange="setExamField('writtenDate',this.value)" class="mt-1 w-full border border-slate-200 rounded-lg px-2.5 py-2 text-sm outline-none focus:border-rose-400"></label>
+                <label class="block"><span class="font-bold text-slate-500">폴더</span>
+                    <select onchange="moveExamTo('${ex.id}',this.value)" class="mt-1 w-full border border-slate-200 rounded-lg px-2 py-2 text-sm outline-none focus:border-rose-400 bg-white">${folderOpts.join('')}</select></label>
+            </div>
+            <textarea oninput="setExamField('memo',this.value)" rows="1" placeholder="메모 (선택)" class="mt-3 w-full border border-slate-200 rounded-lg px-2.5 py-2 text-sm outline-none focus:border-rose-400 resize-y">${escapeHtml(ex.memo)}</textarea>
+        </section>
+
+        <div class="text-[11px] text-slate-500 bg-rose-50 border border-rose-100 rounded-xl px-3 py-2 leading-relaxed">
+            <i class="fa-solid fa-lightbulb text-rose-400 mr-1"></i><b>빈칸 넣기</b>: 커서를 둔 자리에서 <b>＿ 빈칸</b> 버튼(또는 <kbd class="bg-white border rounded px-1">Ctrl</kbd>+<kbd class="bg-white border rounded px-1">B</kbd>)을 누르면 밑줄 빈칸이 들어가요.
+            단어를 <b>드래그로 선택한 뒤</b> 누르면 그 단어가 빈칸의 정답이 돼요. 빈칸을 클릭하면 정답을 고칠 수 있어요.
+            선지의 번호(①②…)를 누르면 정답으로 표시돼요.
+        </div>
+
+        <div id="questionList" class="space-y-4">${ex.questions.map((q, i) => questionCard(ex, q, i)).join('')}</div>
+
+        <button onclick="addQuestion()" class="w-full border-2 border-dashed border-slate-300 hover:border-rose-400 hover:text-rose-600 text-slate-500 font-bold py-4 rounded-2xl transition"><i class="fa-solid fa-plus mr-1"></i>문제 추가</button>
+        <div class="flex justify-between text-xs pt-2 pb-10">
+            <button onclick="deleteExam('${ex.id}')" class="text-red-500 hover:underline"><i class="fa-solid fa-trash mr-1"></i>시험지 삭제</button>
+            <button onclick="closeExam()" class="text-slate-500 hover:underline">목록으로 <i class="fa-solid fa-arrow-right ml-1"></i></button>
+        </div>
+    </div>`;
+    document.querySelectorAll('textarea.autosize').forEach(autosize);
+}
+function questionCard(ex, q, i) {
+    const n = ex.questions.length;
+    return `<section class="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5" data-qid="${q.id}">
+        <div class="flex items-center gap-2 mb-2">
+            <span class="w-8 h-8 rounded-lg bg-slate-900 text-white font-extrabold text-sm flex items-center justify-center">${i + 1}</span>
+            <span class="text-xs font-bold text-slate-500">문제</span>
+            <div class="flex-1"></div>
+            <button onmousedown="event.preventDefault()" onclick="insertBlank('${q.id}')" class="text-xs font-bold bg-rose-50 text-rose-600 hover:bg-rose-100 px-3 py-1.5 rounded-lg" title="빈칸 넣기 (Ctrl+B)"><u class="no-underline border-b-2 border-rose-500 px-1">&nbsp;&nbsp;&nbsp;</u> 빈칸</button>
+            <div class="flex text-slate-400 text-xs">
+                <button onclick="moveQuestion('${q.id}',-1)" ${i === 0 ? 'disabled' : ''} class="w-7 h-7 rounded hover:bg-slate-100 disabled:opacity-30" title="위로"><i class="fa-solid fa-arrow-up"></i></button>
+                <button onclick="moveQuestion('${q.id}',1)" ${i === n - 1 ? 'disabled' : ''} class="w-7 h-7 rounded hover:bg-slate-100 disabled:opacity-30" title="아래로"><i class="fa-solid fa-arrow-down"></i></button>
+                <button onclick="duplicateQuestion('${q.id}')" class="w-7 h-7 rounded hover:bg-slate-100" title="복제"><i class="fa-regular fa-copy"></i></button>
+                <button onclick="deleteQuestion('${q.id}')" class="w-7 h-7 rounded hover:bg-red-50 hover:text-red-500" title="삭제"><i class="fa-solid fa-trash"></i></button>
+            </div>
+        </div>
+        <div class="q-editor border border-slate-200 rounded-xl px-3 py-2 text-[15px] focus:border-rose-400" contenteditable="true" data-qid="${q.id}"
+            data-placeholder="문제를 입력하세요. 빈칸이 필요한 곳에서 ＿ 빈칸 버튼을 누르세요.">${renderBlankText(q.text, 'editor')}</div>
+
+        <div class="mt-4">
+            <div class="flex items-center gap-2 mb-2">
+                <span class="text-xs font-bold text-slate-500">선지</span>
+                <div class="flex items-center border border-slate-200 rounded-lg overflow-hidden text-xs">
+                    <button onclick="setChoiceCount('${q.id}',-1)" class="w-7 h-7 hover:bg-slate-100"><i class="fa-solid fa-minus"></i></button>
+                    <span class="w-10 text-center font-bold">${q.choices.length}개</span>
+                    <button onclick="setChoiceCount('${q.id}',1)" class="w-7 h-7 hover:bg-slate-100"><i class="fa-solid fa-plus"></i></button>
+                </div>
+                ${q.choices.length ? '' : '<span class="text-[11px] text-slate-400">선지가 없으면 주관식(서술형)으로 출력돼요</span>'}
+            </div>
+            <div class="space-y-1.5">${q.choices.map((c, ci) => `
+                <div class="flex items-start gap-2">
+                    <button onclick="toggleAnswer('${q.id}',${ci})" class="choice-mark ${q.answers.includes(ci) ? 'correct' : ''} shrink-0 w-8 h-8 rounded-full border border-slate-300 text-base hover:border-rose-400" title="정답으로 표시">${choiceMark(ci)}</button>
+                    <textarea rows="1" class="autosize flex-1 border border-slate-200 rounded-lg px-2.5 py-1.5 text-sm outline-none focus:border-rose-400 resize-none" placeholder="선지 ${ci + 1}"
+                        oninput="setChoice('${q.id}',${ci},this.value);autosize(this)">${escapeHtml(c)}</textarea>
+                    <button onclick="removeChoice('${q.id}',${ci})" class="w-7 h-8 text-slate-300 hover:text-red-500" title="이 선지 삭제"><i class="fa-solid fa-xmark"></i></button>
+                </div>`).join('')}</div>
+        </div>
+
+        <div class="grid sm:grid-cols-2 gap-3 mt-4 text-xs">
+            <label class="block"><span class="font-bold text-slate-500">정답 ${q.choices.length ? '(서술 · 선택)' : ''}</span>
+                <input value="${escapeHtml(q.answerText)}" oninput="setQField('${q.id}','answerText',this.value)" placeholder="${q.choices.length ? '번호 외에 덧붙일 정답이 있으면 입력' : '정답을 입력하세요'}"
+                    class="mt-1 w-full border border-slate-200 rounded-lg px-2.5 py-2 text-sm outline-none focus:border-rose-400"></label>
+            <label class="block"><span class="font-bold text-slate-500">해설 <span class="font-normal text-slate-400">(선택 · 비워두면 생략)</span></span>
+                <textarea rows="1" oninput="setQField('${q.id}','explanation',this.value);autosize(this)" placeholder="해설이 필요할 때만 입력"
+                    class="autosize mt-1 w-full border border-slate-200 rounded-lg px-2.5 py-2 text-sm outline-none focus:border-rose-400 resize-none">${escapeHtml(q.explanation)}</textarea></label>
+        </div>
+    </section>`;
+}
+function autosize(el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 2 + 'px'; }
+
+const curExam = () => getExam(ui.examId);
+const getQ = id => curExam()?.questions.find(q => q.id === id);
+function setExamField(k, v) {
+    const ex = curExam(); ex[k] = v; save();
+    if (k === 'title') document.getElementById('breadcrumb').lastChild.textContent = ' ' + (v || '(제목 없음)');
+}
+function setQField(qid, k, v) { getQ(qid)[k] = v; save(); }
+function setChoice(qid, ci, v) { getQ(qid).choices[ci] = v; save(); }
+function rerenderKeepScroll() { const s = document.getElementById('mainScroll'), t = s.scrollTop; renderEditor(curExam()); s.scrollTop = t; }
+function toggleAnswer(qid, ci) { const q = getQ(qid); const i = q.answers.indexOf(ci); i >= 0 ? q.answers.splice(i, 1) : q.answers.push(ci); q.answers.sort((a, b) => a - b); save(); rerenderKeepScroll(); }
+function setChoiceCount(qid, d) {
+    const q = getQ(qid);
+    if (d > 0 && q.choices.length < MAX_CHOICES) q.choices.push('');
+    if (d < 0 && q.choices.length > 0) {
+        if (q.choices[q.choices.length - 1].trim() && !confirm('마지막 선지에 내용이 있어요. 삭제할까요?')) return;
+        q.choices.pop(); q.answers = q.answers.filter(a => a < q.choices.length);
+    }
+    save(); rerenderKeepScroll();
+}
+function removeChoice(qid, ci) {
+    const q = getQ(qid);
+    q.choices.splice(ci, 1);
+    q.answers = q.answers.filter(a => a !== ci).map(a => a > ci ? a - 1 : a);
+    save(); rerenderKeepScroll();
+}
+function addQuestion() {
+    const ex = curExam(); const q = newQuestion(); ex.questions.push(q); save(); rerenderKeepScroll();
+    const el = document.querySelector(`.q-editor[data-qid="${q.id}"]`); el?.scrollIntoView({ behavior: 'smooth', block: 'center' }); el?.focus();
+}
+function deleteQuestion(qid) {
+    const ex = curExam(); const q = getQ(qid);
+    if ((q.text || q.choices.some(c => c.trim())) && !confirm('이 문제를 삭제할까요?')) return;
+    ex.questions = ex.questions.filter(x => x.id !== qid); save(); rerenderKeepScroll();
+}
+function duplicateQuestion(qid) {
+    const ex = curExam(); const i = ex.questions.findIndex(x => x.id === qid);
+    const c = JSON.parse(JSON.stringify(ex.questions[i])); c.id = uid(); ex.questions.splice(i + 1, 0, c); save(); rerenderKeepScroll();
+}
+function moveQuestion(qid, d) {
+    const qs = curExam().questions; const i = qs.findIndex(x => x.id === qid); const j = i + d;
+    if (j < 0 || j >= qs.length) return; [qs[i], qs[j]] = [qs[j], qs[i]]; save(); rerenderKeepScroll();
+}
+
+// 문제 에디터 이벤트 (위임)
+let lastRange = null;
+document.addEventListener('selectionchange', () => {
+    const s = window.getSelection(); if (!s.rangeCount) return;
+    const r = s.getRangeAt(0); const ed = r.commonAncestorContainer.nodeType === 1 ? r.commonAncestorContainer.closest?.('.q-editor') : r.commonAncestorContainer.parentElement?.closest('.q-editor');
+    if (ed) lastRange = { range: r.cloneRange(), qid: ed.dataset.qid };
+});
+document.addEventListener('input', e => {
+    const ed = e.target.closest?.('.q-editor'); if (!ed) return;
+    setQField(ed.dataset.qid, 'text', serializeEditor(ed));
+});
+document.addEventListener('paste', e => {
+    const ed = e.target.closest?.('.q-editor'); if (!ed) return;
+    e.preventDefault();
+    const text = (e.clipboardData || window.clipboardData).getData('text/plain');
+    document.execCommand('insertText', false, text);
+});
+document.addEventListener('keydown', e => {
+    const ed = e.target.closest?.('.q-editor');
+    if (ed && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') { e.preventDefault(); insertBlank(ed.dataset.qid); }
+    if (ed && e.key === 'Enter') { e.preventDefault(); document.execCommand('insertLineBreak'); }
+    if (e.key === 'Escape' && !document.getElementById('paperOverlay').classList.contains('hidden')) closePaper();
+});
+document.addEventListener('click', e => {
+    const b = e.target.closest?.('.q-editor .blank'); if (!b) return;
+    const ed = b.closest('.q-editor');
+    const v = prompt('빈칸의 정답을 입력하세요.\n(비워두면 정답 없는 빈칸, 빈칸을 지우려면 "삭제" 입력)', b.dataset.ans || '');
+    if (v === null) return;
+    if (v.trim() === '삭제') b.remove(); else { b.dataset.ans = v.trim(); b.textContent = v.trim(); }
+    setQField(ed.dataset.qid, 'text', serializeEditor(ed));
+});
+function insertBlank(qid) {
+    const ed = document.querySelector(`.q-editor[data-qid="${qid}"]`); if (!ed) return;
+    let range;
+    const s = window.getSelection();
+    if (s.rangeCount && ed.contains(s.getRangeAt(0).commonAncestorContainer)) range = s.getRangeAt(0);
+    else if (lastRange && lastRange.qid === qid && ed.contains(lastRange.range.commonAncestorContainer)) range = lastRange.range;
+    else { range = document.createRange(); range.selectNodeContents(ed); range.collapse(false); }
+    const ans = range.toString().replace(/\s+/g, ' ').trim();
+    range.deleteContents();
+    const span = document.createElement('span');
+    span.className = 'blank'; span.contentEditable = 'false'; span.dataset.ans = ans; span.textContent = ans; span.title = '클릭해서 빈칸 정답 수정';
+    const after = document.createTextNode('​');
+    range.insertNode(after); range.insertNode(span);
+    ed.focus();
+    const r = document.createRange(); r.setStart(after, 1); r.collapse(true);
+    s.removeAllRanges(); s.addRange(r);
+    setQField(qid, 'text', serializeEditor(ed));
+}
+
+// ── 시험지 미리보기 / PDF ──
+let paper = { examIds: [], mode: 'both', cols: 2, explain: true, shuffleQ: false, shuffleC: false, nameBox: true, order: null };
+try { Object.assign(paper, JSON.parse(localStorage.getItem('wrongnote_print_opts') || '{}'), { examIds: [], order: null }); } catch (e) {}
+function savePrintOpts() { const { mode, cols, explain, shuffleQ, shuffleC, nameBox } = paper; try { localStorage.setItem('wrongnote_print_opts', JSON.stringify({ mode, cols, explain, shuffleQ, shuffleC, nameBox })); } catch (e) {} }
+
+function openPaper(ids) {
+    const exams = ids.map(getExam).filter(Boolean);
+    if (!exams.length) return;
+    if (!exams.some(e => e.questions.length)) { alert('문제가 없는 시험지예요.'); return; }
+    paper.examIds = exams.map(e => e.id);
+    buildOrder();
+    syncPaperControls();
+    document.getElementById('paperOverlay').classList.remove('hidden');
+    document.getElementById('paperOverlay').scrollTop = 0;
+    renderPaper();
+}
+function closePaper() { document.getElementById('paperOverlay').classList.add('hidden'); }
+function buildOrder() {
+    // 문제/선지 섞기 결과를 고정해 두어 문제지와 답지가 같은 순서를 쓰도록 함
+    let items = [];
+    paper.examIds.map(getExam).forEach(ex => ex.questions.forEach(q => items.push({ q, ex })));
+    if (paper.shuffleQ) items = shuffleArr(items);
+    items.forEach(it => {
+        const idx = it.q.choices.map((_, i) => i).filter(i => it.q.choices[i].trim()); // 비어 있는 선지는 출력하지 않음
+        it.choiceOrder = paper.shuffleC ? shuffleArr(idx) : idx;
+    });
+    paper.order = items;
+}
+function reshuffle() { buildOrder(); renderPaper(); }
+function syncPaperControls() {
+    document.querySelectorAll('#printModeGroup button').forEach(b => b.className = b.className.replace(/ ?(bg-slate-900 text-white|bg-white text-slate-600)/g, '') + (b.dataset.mode === paper.mode ? ' bg-slate-900 text-white' : ' bg-white text-slate-600'));
+    document.querySelectorAll('#colsGroup button').forEach(b => b.className = b.className.replace(/ ?(bg-slate-900 text-white|bg-white text-slate-600)/g, '') + (+b.dataset.cols === paper.cols ? ' bg-slate-900 text-white' : ' bg-white text-slate-600'));
+    document.getElementById('optExplain').checked = paper.explain;
+    document.getElementById('optShuffleQ').checked = paper.shuffleQ;
+    document.getElementById('optShuffleC').checked = paper.shuffleC;
+    document.getElementById('optNameBox').checked = paper.nameBox;
+    document.getElementById('reshuffleBtn').classList.toggle('hidden', !(paper.shuffleQ || paper.shuffleC));
+}
+document.getElementById('printModeGroup').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; paper.mode = b.dataset.mode; savePrintOpts(); syncPaperControls(); renderPaper(); });
+document.getElementById('colsGroup').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; paper.cols = +b.dataset.cols; savePrintOpts(); syncPaperControls(); renderPaper(); });
+[['optExplain', 'explain', false], ['optShuffleQ', 'shuffleQ', true], ['optShuffleC', 'shuffleC', true], ['optNameBox', 'nameBox', false]].forEach(([id, key, reorder]) => {
+    document.getElementById(id).addEventListener('change', e => { paper[key] = e.target.checked; savePrintOpts(); if (reorder) buildOrder(); syncPaperControls(); renderPaper(); });
+});
+
+function paperInfo() {
+    const exams = paper.examIds.map(getExam);
+    const single = exams.length === 1;
+    const title = single ? (exams[0].title || '오답 시험지') : (ui.folderId !== 'all' && getFolder(ui.folderId) ? getFolder(ui.folderId).name + ' 오답 모음' : '오답 모음');
+    const subjects = [...new Set(exams.map(e => e.subject).filter(Boolean))];
+    return { exams, single, title, subject: subjects.join(', ') };
+}
+function paperHead(kind, info) {
+    const e = info.exams[0];
+    const metaLeft = [];
+    if (info.subject) metaLeft.push(`<div class="box"><span>과목</span><span>${escapeHtml(info.subject)}</span></div>`);
+    if (info.single) {
+        metaLeft.push(`<div class="box"><span>푼 날짜</span><span>${fmtDate(e.solvedDate)}</span></div>`);
+        metaLeft.push(`<div class="box"><span>오답 작성</span><span>${fmtDate(e.writtenDate)}</span></div>`);
+    } else metaLeft.push(`<div class="box"><span>시험지</span><span>${info.exams.length}개 합본</span></div>`);
+    const right = kind === '문제지' && paper.nameBox ? `<div class="flex gap-2"><div class="box"><span>이름</span><span class="fill"></span></div><div class="box"><span>점수</span><span class="fill"></span></div></div>` : '';
+    return `<div class="paper-head"><div class="kind">${kind}</div><h1>${escapeHtml(info.title)}</h1>
+        <div class="paper-meta"><div class="flex gap-2 flex-wrap">${metaLeft.join('')}</div>${right}</div></div>`;
+}
+function answerLabel(it) {
+    const q = it.q; const parts = [];
+    const marks = q.answers.map(a => it.choiceOrder.indexOf(a)).filter(i => i >= 0).sort((a, b) => a - b).map(choiceMark);
+    if (marks.length) parts.push(marks.join(', '));
+    const blanks = blankAnswers(q.text).filter(Boolean);
+    if (blanks.length) parts.push(escapeHtml(blanks.join(' / ')));
+    if (q.answerText.trim()) parts.push(escapeHtml(q.answerText.trim()));
+    return parts.length ? parts.join(' · ') : '-';
+}
+function questionHtml(it, n, isAnswer) {
+    const q = it.q;
+    const src = !paperInfo().single && it.ex.title ? ` <span class="q-src">[${escapeHtml(it.ex.title)}]</span>` : '';
+    let h = `<div class="q ${isAnswer ? 'ans' : ''}"><div><span class="q-no">${n}.</span>${renderBlankText(q.text, isAnswer ? 'answer' : 'question') || '&nbsp;'}${src}</div>`;
+    if (it.choiceOrder.length) {
+        h += `<div class="choices">${it.choiceOrder.map((orig, pos) => `<div class="${isAnswer && q.answers.includes(orig) ? 'correct' : ''}">${choiceMark(pos)} ${escapeHtml(q.choices[orig]).replace(/\n/g, '<br>')}</div>`).join('')}</div>`;
+    } else if (!isAnswer && !blankAnswers(q.text).length) {
+        h += `<div class="write-area"></div>`;
+    }
+    if (isAnswer) {
+        if (q.answerText.trim()) h += `<div style="color:#e11d48;font-weight:700;font-size:13px;margin-top:2px">정답: ${escapeHtml(q.answerText.trim())}</div>`;
+        if (paper.explain && q.explanation.trim()) h += `<div class="exp"><b>해설</b> ${escapeHtml(q.explanation.trim()).replace(/\n/g, '<br>')}</div>`;
+    }
+    return h + '</div>';
+}
+function renderPaper() {
+    const info = paperInfo(); const items = paper.order;
+    const colsCls = paper.cols === 2 ? 'cols-2' : '';
+    let html = '';
+    if (paper.mode !== 'answer') {
+        html += `<div class="paper-sheet paper">${paperHead('문제지', info)}
+            <div class="paper-qs ${colsCls}">${items.map((it, i) => questionHtml(it, i + 1, false)).join('')}</div>
+            <div class="paper-foot">— 문제지 끝 · 총 ${items.length}문항 —</div></div>`;
+    }
+    if (paper.mode !== 'question') {
+        const rows = []; for (let i = 0; i < items.length; i += 5) rows.push(items.slice(i, i + 5).map((it, k) => ({ it, n: i + k + 1 })));
+        const table = `<table class="ans-table">${rows.map(r => `<tr>${r.map(({ n }) => `<th>${n}</th>`).join('')}${'<th></th>'.repeat(5 - r.length)}</tr><tr>${r.map(({ it }) => `<td class="a">${answerLabel(it)}</td>`).join('')}${'<td></td>'.repeat(5 - r.length)}</tr>`).join('')}</table>`;
+        const showDetail = items.some(it => blankAnswers(it.q.text).length || it.choiceOrder.length || (paper.explain && it.q.explanation.trim()));
+        html += `<div class="paper-sheet paper">${paperHead('정답 및 해설', info)}${table}
+            ${showDetail ? `<div class="paper-qs ${colsCls}">${items.map((it, i) => questionHtml(it, i + 1, true)).join('')}</div>` : ''}
+            <div class="paper-foot">— 답지 끝 —</div></div>`;
+    }
+    document.getElementById('paperArea').innerHTML = html;
+}
+function printPaper() {
+    const info = paperInfo(); const old = document.title;
+    const suffix = { both: '문제지+답지', question: '문제지', answer: '답지' }[paper.mode];
+    document.title = `${info.title}_${suffix}`.replace(/[\\/:*?"<>|]/g, '_');
+    window.print();
+    setTimeout(() => document.title = old, 500);
+}
+
+// ── 백업 ──
+function exportJSON() {
+    const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `오답노트_백업_${today()}.json`; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+function importJSON(e) {
+    const file = e.target.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+        try {
+            const data = normalize(JSON.parse(reader.result));
+            if (!confirm(`백업을 불러올까요?\n폴더 ${data.folders.length}개, 시험지 ${data.exams.length}개\n현재 데이터는 백업 내용으로 바뀝니다.`)) return;
+            state = data; ensureDefaultFolder(); ui.examId = null; ui.folderId = 'all'; save(); saveUI(); render();
+        } catch (err) { alert('올바른 백업 파일이 아니에요.'); }
+    };
+    reader.readAsText(file); e.target.value = '';
+}
+
+loadLocal();
+render();
+</script>
+</body>
+</html>
