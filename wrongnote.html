@@ -136,6 +136,63 @@
     </main>
 </div>
 
+<!-- 사진으로 문제 추가 (AI 인식) -->
+<div id="aiModal" class="hidden fixed inset-0 bg-black/60 z-[150] flex items-center justify-center p-3">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col">
+        <div class="px-5 pt-5 pb-3 border-b border-slate-100">
+            <div class="flex items-center gap-2">
+                <h3 class="font-extrabold text-slate-800 flex-1"><i class="fa-solid fa-camera text-rose-500 mr-1.5"></i>사진으로 문제 추가</h3>
+                <button onclick="closeAiModal()" class="w-8 h-8 rounded-lg hover:bg-slate-100 text-slate-400"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="flex mt-3 rounded-lg overflow-hidden border border-slate-200 text-xs font-bold" id="aiTabs">
+                <button data-tab="direct" class="flex-1 py-2">바로 인식 (Gemini)</button>
+                <button data-tab="paste" class="flex-1 py-2 border-l border-slate-200">다른 AI 사용 (JSON 붙여넣기)</button>
+            </div>
+        </div>
+        <div class="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+            <!-- 바로 인식 -->
+            <div id="aiTabDirect" class="space-y-3">
+                <div id="aiKeyBox" class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800 space-y-2">
+                    <div><b>Gemini API 키</b>가 필요해요. <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener" class="underline font-bold">Google AI Studio</a>에서 무료로 발급받아 붙여넣으세요. 키는 이 기기 브라우저에만 저장돼요.</div>
+                    <div class="flex gap-2">
+                        <input id="aiKeyInput" type="password" placeholder="AIza..." class="flex-1 border border-amber-300 rounded-lg px-2.5 py-1.5 text-sm bg-white outline-none">
+                        <button onclick="saveAiKey()" class="bg-amber-500 hover:bg-amber-600 text-white font-bold px-3 rounded-lg">저장</button>
+                    </div>
+                </div>
+                <div id="aiKeySaved" class="hidden text-[11px] text-slate-500 flex items-center gap-2"><i class="fa-solid fa-key text-amber-500"></i>Gemini API 키 저장됨 <button onclick="resetAiKey()" class="underline">변경</button></div>
+                <label class="block border-2 border-dashed border-slate-300 hover:border-rose-400 rounded-xl p-5 text-center cursor-pointer text-slate-500">
+                    <i class="fa-solid fa-camera text-2xl mb-1"></i>
+                    <div class="text-sm font-bold">문제 사진 찍기 / 고르기</div>
+                    <div class="text-[11px] mt-0.5">여러 장 한 번에 가능 · 한 장에 문제가 여러 개여도 돼요</div>
+                    <input id="aiFileInput" type="file" accept="image/*" multiple class="hidden" onchange="addAiImages(event)">
+                </label>
+                <div id="aiThumbs" class="grid grid-cols-4 sm:grid-cols-6 gap-2"></div>
+                <label class="flex items-start gap-2 text-xs text-slate-600 cursor-pointer"><input type="checkbox" id="aiReadMarks" class="mt-0.5" checked> 사진에 표시된 정답(채점 표시, 정답 체크)이 있으면 정답으로도 인식하기</label>
+                <button id="aiRunBtn" onclick="runAiRecognition()" class="w-full bg-rose-600 hover:bg-rose-500 disabled:bg-slate-300 text-white font-bold py-2.5 rounded-xl text-sm"><i class="fa-solid fa-wand-magic-sparkles mr-1"></i>AI로 인식하기</button>
+            </div>
+            <!-- 다른 AI 사용 -->
+            <div id="aiTabPaste" class="hidden space-y-3">
+                <p class="text-xs text-slate-500">문제 사진을 AI(Claude, ChatGPT, Gemini 등)에 보내면서 아래 프롬프트를 같이 붙여넣고, AI가 준 JSON을 아래 칸에 붙여넣으세요.</p>
+                <button onclick="copyAiPrompt()" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold py-2 rounded-xl"><i class="fa-solid fa-copy mr-1"></i>AI 프롬프트 복사하기</button>
+                <textarea id="aiPasteText" rows="7" placeholder='{"questions":[{"text":"...","choices":["..."],"answer":[2],"blankAnswers":[],"explanation":""}]}' class="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-mono outline-none focus:border-rose-400"></textarea>
+                <button onclick="parsePastedJson()" class="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-2.5 rounded-xl text-sm">결과 확인하기</button>
+            </div>
+            <!-- 인식 결과 -->
+            <div id="aiResult" class="hidden space-y-2">
+                <div class="flex items-center gap-2 pt-2 border-t border-slate-100">
+                    <span class="text-xs font-bold text-slate-500 flex-1">인식 결과 · 추가할 문제를 고르세요 (추가한 뒤에도 고칠 수 있어요)</span>
+                    <button onclick="toggleAiAll()" class="text-[11px] underline text-slate-500">전체 선택/해제</button>
+                </div>
+                <div id="aiResultList" class="space-y-2"></div>
+            </div>
+        </div>
+        <div class="px-5 py-3 border-t border-slate-100 flex gap-2">
+            <button onclick="closeAiModal()" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-2.5 rounded-xl text-sm font-bold">취소</button>
+            <button id="aiAddBtn" onclick="confirmAiAdd()" disabled class="flex-1 bg-rose-600 hover:bg-rose-500 disabled:bg-slate-300 text-white py-2.5 rounded-xl text-sm font-bold">시험지에 추가</button>
+        </div>
+    </div>
+</div>
+
 <!-- 시험지 미리보기 / PDF -->
 <div id="paperOverlay" class="hidden">
     <div class="no-print sticky top-0 z-10 bg-white border-b border-slate-200 shadow-sm">
@@ -375,12 +432,12 @@ function closeMoveModal() { document.getElementById('moveModal').classList.add('
 
 // ── 시험지 조작 ──
 function newQuestion() { return { id: uid(), text: '', choices: ['', '', '', '', ''], answers: [], answerText: '', explanation: '' }; }
-function createExam() {
+function createExam(withPhoto) {
     let folderId = ui.folderId !== 'all' && getFolder(ui.folderId) ? ui.folderId : childFolders(null)[0].id;
     const ex = { id: uid(), folderId, title: '', subject: '', solvedDate: today(), writtenDate: today(), memo: '', questions: [newQuestion()], createdAt: Date.now() };
     state.exams.push(ex); ui.examId = ex.id; ui.folderId = folderId;
     save(); saveUI(); closeSidebar(); render();
-    setTimeout(() => document.getElementById('examTitle')?.focus(), 50);
+    if (withPhoto) openAiModal(); else setTimeout(() => document.getElementById('examTitle')?.focus(), 50);
 }
 function openExam(id) { ui.examId = id; saveUI(); render(); document.getElementById('mainScroll').scrollTop = 0; }
 function closeExam() { ui.examId = null; saveUI(); render(); }
@@ -408,7 +465,8 @@ function renderList() {
     const fid = ui.folderId === 'all' || getFolder(ui.folderId) ? ui.folderId : 'all';
     ui.folderId = fid;
     document.getElementById('breadcrumb').innerHTML = fid === 'all' ? '<i class="fa-solid fa-layer-group text-rose-500 mr-1.5"></i>모든 시험지' : `<i class="fa-solid fa-folder-open text-amber-500 mr-1.5"></i>${escapeHtml(folderPath(fid))}`;
-    document.getElementById('headerActions').innerHTML = `<button onclick="createExam()" class="bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold px-3 py-2 rounded-lg"><i class="fa-solid fa-plus mr-1"></i>새 시험지</button>`;
+    document.getElementById('headerActions').innerHTML = `<button onclick="createExam(true)" class="bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold px-3 py-2 rounded-lg"><i class="fa-solid fa-camera text-rose-500 mr-1"></i><span class="hidden sm:inline">사진으로 </span>새 시험지</button>
+        <button onclick="createExam()" class="bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold px-3 py-2 rounded-lg"><i class="fa-solid fa-plus mr-1"></i>새 시험지</button>`;
 
     const q = ui.search.trim().toLowerCase();
     let list = examsIn(fid).filter(e => !q || (e.title + ' ' + e.subject + ' ' + e.memo).toLowerCase().includes(q));
@@ -515,6 +573,7 @@ function serializeEditor(el) {
 function renderEditor(ex) {
     document.getElementById('breadcrumb').innerHTML = `<button onclick="closeExam()" class="text-slate-400 hover:text-slate-700 mr-2"><i class="fa-solid fa-arrow-left"></i></button><span class="text-slate-400 font-normal">${escapeHtml(folderPath(ex.folderId))} /</span> ${escapeHtml(ex.title || '(제목 없음)')}`;
     document.getElementById('headerActions').innerHTML = `
+        <button onclick="openAiModal()" class="bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold px-3 py-2 rounded-lg"><i class="fa-solid fa-camera text-rose-500 mr-1"></i>사진<span class="hidden sm:inline">으로 문제 추가</span></button>
         <button onclick="openPaper(['${ex.id}'])" class="bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold px-3 py-2 rounded-lg"><i class="fa-solid fa-print mr-1"></i><span class="hidden sm:inline">시험지 보기 / </span>PDF</button>`;
     const folderOpts = [];
     (function walk(pid, depth) { childFolders(pid).forEach(f => { folderOpts.push(`<option value="${f.id}" ${f.id === ex.folderId ? 'selected' : ''}>${'　'.repeat(depth)}${escapeHtml(f.name)}</option>`); walk(f.id, depth + 1); }); })(null, 0);
@@ -545,7 +604,10 @@ function renderEditor(ex) {
 
         <div id="questionList" class="space-y-4">${ex.questions.map((q, i) => questionCard(ex, q, i)).join('')}</div>
 
-        <button onclick="addQuestion()" class="w-full border-2 border-dashed border-slate-300 hover:border-rose-400 hover:text-rose-600 text-slate-500 font-bold py-4 rounded-2xl transition"><i class="fa-solid fa-plus mr-1"></i>문제 추가</button>
+        <div class="grid grid-cols-2 gap-3">
+        <button onclick="openAiModal()" class="w-full border-2 border-dashed border-slate-300 hover:border-rose-400 hover:text-rose-600 text-slate-500 font-bold py-4 rounded-2xl transition"><i class="fa-solid fa-camera mr-1"></i>사진으로 문제 추가</button>
+        <button onclick="addQuestion()" class="w-full border-2 border-dashed border-slate-300 hover:border-rose-400 hover:text-rose-600 text-slate-500 font-bold py-4 rounded-2xl transition"><i class="fa-solid fa-plus mr-1"></i>직접 문제 추가</button>
+        </div>
         <div class="flex justify-between text-xs pt-2 pb-10">
             <button onclick="deleteExam('${ex.id}')" class="text-red-500 hover:underline"><i class="fa-solid fa-trash mr-1"></i>시험지 삭제</button>
             <button onclick="closeExam()" class="text-slate-500 hover:underline">목록으로 <i class="fa-solid fa-arrow-right ml-1"></i></button>
@@ -669,7 +731,7 @@ document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && !document.getElementById('paperOverlay').classList.contains('hidden')) closePaper();
 });
 document.addEventListener('click', e => {
-    const b = e.target.closest?.('.q-editor .blank'); if (!b) return;
+    const b = e.target.closest?.('.q-editor[data-qid] .blank'); if (!b) return;
     const ed = b.closest('.q-editor');
     const v = prompt('빈칸의 정답을 입력하세요.\n(비워두면 정답 없는 빈칸, 빈칸을 지우려면 "삭제" 입력)', b.dataset.ans || '');
     if (v === null) return;
@@ -807,6 +869,187 @@ function printPaper() {
     document.title = `${info.title}_${suffix}`.replace(/[\\/:*?"<>|]/g, '_');
     window.print();
     setTimeout(() => document.title = old, 500);
+}
+
+// ── 사진으로 문제 추가 (AI 인식) ──
+const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash'];
+const AI_PROMPT = `너는 시험 문제 사진을 데이터로 옮기는 도우미야. 사진 속 객관식/주관식 문제를 모두 찾아서 아래 JSON 형식으로만 응답해. 설명이나 코드블록 없이 JSON만 출력해.
+
+{"subject":"과목명(알 수 있으면, 없으면 빈 문자열)","questions":[{"number":"원래 문제 번호","text":"문제 본문","choices":["선지1","선지2"],"answer":[정답 선지 번호(1부터)],"blankAnswers":["빈칸 정답"],"explanation":""}]}
+
+규칙:
+- text: 문제 본문을 사진 그대로 옮겨. 문제 번호(예: "3.")와 배점 표시는 빼. 줄바꿈은 \\n 으로 표시해.
+- 본문에 <보기>나 ㄱ. ㄴ. ㄷ. 같은 박스 내용이 있으면 text 안에 줄바꿈으로 이어서 넣어.
+- 본문의 빈칸, 밑줄 빈칸, ( ) 괄호 빈칸, ㉠ 같은 기호로 비워둔 자리는 [[빈칸]] 으로 바꿔 써.
+- choices: 선지 내용만 순서대로 넣어. 앞의 ①②③, 1), (1), ㄱ. 같은 번호는 빼. 주관식이면 빈 배열 [].
+- answer: 사진에 정답 표시(동그라미, 체크, 채점 표시, 정답란)가 분명하게 있을 때만 그 선지 번호를 넣고, 아니면 빈 배열 [].
+- blankAnswers: [[빈칸]] 순서대로, 사진에 빈칸 정답이 적혀 있을 때만 넣고, 모르면 빈 문자열 "".
+- explanation: 사진에 해설이 있을 때만 옮기고, 없으면 빈 문자열. 해설을 지어내지 마.
+- 글자를 추측해서 바꾸지 말고 사진에 있는 그대로 옮겨. 잘린 문제는 보이는 부분까지만 옮겨.`;
+
+let aiImages = [];   // {dataUrl, mime, b64}
+let aiParsed = [];   // 인식된 문제 (newQuestion 형식)
+let aiTab = 'direct';
+
+function getAiKey() { try { return localStorage.getItem('gemini_api_key') || ''; } catch (e) { return ''; } }
+function saveAiKey() {
+    const v = document.getElementById('aiKeyInput').value.trim(); if (!v) return;
+    try { localStorage.setItem('gemini_api_key', v); } catch (e) {}
+    syncAiKeyUI();
+}
+function resetAiKey() { document.getElementById('aiKeyInput').value = getAiKey(); document.getElementById('aiKeyBox').classList.remove('hidden'); document.getElementById('aiKeySaved').classList.add('hidden'); }
+function syncAiKeyUI() {
+    const has = !!getAiKey();
+    document.getElementById('aiKeyBox').classList.toggle('hidden', has);
+    document.getElementById('aiKeySaved').classList.toggle('hidden', !has);
+}
+function setAiTab(t) {
+    aiTab = t;
+    document.querySelectorAll('#aiTabs button').forEach(b => b.className = b.className.replace(/ ?(bg-slate-900 text-white|bg-white text-slate-600)/g, '') + (b.dataset.tab === t ? ' bg-slate-900 text-white' : ' bg-white text-slate-600'));
+    document.getElementById('aiTabDirect').classList.toggle('hidden', t !== 'direct');
+    document.getElementById('aiTabPaste').classList.toggle('hidden', t !== 'paste');
+}
+document.getElementById('aiTabs').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setAiTab(b.dataset.tab); });
+
+function openAiModal() {
+    if (!curExam()) return;
+    aiImages = []; aiParsed = [];
+    document.getElementById('aiPasteText').value = '';
+    renderAiThumbs(); renderAiResult(); syncAiKeyUI(); setAiTab(aiTab);
+    document.getElementById('aiModal').classList.remove('hidden');
+}
+function closeAiModal() { document.getElementById('aiModal').classList.add('hidden'); aiImages = []; aiParsed = []; }
+
+// 큰 사진은 줄여서 보냄 (전송 속도, 용량)
+function loadImageScaled(file, maxSide = 1800) {
+    return new Promise((resolve, reject) => {
+        const url = URL.createObjectURL(file); const img = new Image();
+        img.onload = () => {
+            const k = Math.min(1, maxSide / Math.max(img.width, img.height));
+            const c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+            const ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height); ctx.drawImage(img, 0, 0, c.width, c.height);
+            URL.revokeObjectURL(url);
+            const dataUrl = c.toDataURL('image/jpeg', 0.88);
+            resolve({ dataUrl, mime: 'image/jpeg', b64: dataUrl.split(',')[1] });
+        };
+        img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('이미지를 읽을 수 없어요: ' + file.name)); };
+        img.src = url;
+    });
+}
+async function addAiImages(e) {
+    const files = [...e.target.files]; e.target.value = '';
+    for (const f of files) { try { aiImages.push(await loadImageScaled(f)); } catch (err) { alert(err.message); } }
+    renderAiThumbs();
+}
+function removeAiImage(i) { aiImages.splice(i, 1); renderAiThumbs(); }
+function renderAiThumbs() {
+    document.getElementById('aiThumbs').innerHTML = aiImages.map((im, i) => `
+        <div class="relative aspect-square rounded-lg overflow-hidden border border-slate-200">
+            <img src="${im.dataUrl}" class="w-full h-full object-cover">
+            <button onclick="removeAiImage(${i})" class="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/60 text-white text-[10px]"><i class="fa-solid fa-xmark"></i></button>
+        </div>`).join('');
+    document.getElementById('aiRunBtn').disabled = !aiImages.length;
+}
+
+async function callGemini(key, parts) {
+    let lastErr;
+    for (const model of GEMINI_MODELS) {
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contents: [{ parts }], generationConfig: { temperature: 0.1, responseMimeType: 'application/json' } })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) return (data.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('');
+        lastErr = new Error(data.error?.message || `HTTP ${res.status}`);
+        if (res.status !== 404) break; // 모델 이름 문제일 때만 다음 모델로
+    }
+    throw lastErr;
+}
+async function runAiRecognition() {
+    const key = getAiKey();
+    if (!key) { alert('먼저 Gemini API 키를 저장해 주세요.\n키가 없으면 "다른 AI 사용" 탭을 이용하세요.'); return; }
+    if (!aiImages.length) return;
+    const btn = document.getElementById('aiRunBtn'); const old = btn.innerHTML;
+    btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i>인식 중... (사진이 많으면 시간이 걸려요)';
+    try {
+        let prompt = AI_PROMPT;
+        if (!document.getElementById('aiReadMarks').checked) prompt += '\n- 이번에는 정답 표시를 무시하고 answer와 blankAnswers는 모두 비워.';
+        if (aiImages.length > 1) prompt += `\n- 사진 ${aiImages.length}장을 순서대로 보고, 모든 사진의 문제를 하나의 questions 배열에 순서대로 넣어.`;
+        const parts = [{ text: prompt }, ...aiImages.map(im => ({ inline_data: { mime_type: im.mime, data: im.b64 } }))];
+        const text = await callGemini(key, parts);
+        aiParsed = parseAiJson(text);
+        if (!aiParsed.length) alert('사진에서 문제를 찾지 못했어요. 더 밝고 반듯하게 다시 찍어 보세요.');
+        renderAiResult();
+    } catch (err) {
+        alert('인식에 실패했어요.\n' + err.message + (/API key|API_KEY|permission/i.test(err.message) ? '\n\nAPI 키를 다시 확인해 주세요.' : ''));
+    } finally { btn.innerHTML = old; btn.disabled = !aiImages.length; }
+}
+function copyAiPrompt() {
+    const done = () => alert('프롬프트를 복사했어요. AI에 문제 사진과 함께 붙여넣으세요.');
+    if (navigator.clipboard) navigator.clipboard.writeText(AI_PROMPT).then(done).catch(() => window.prompt('아래 내용을 직접 복사하세요:', AI_PROMPT));
+    else window.prompt('아래 내용을 직접 복사하세요:', AI_PROMPT);
+}
+function parsePastedJson() {
+    try {
+        aiParsed = parseAiJson(document.getElementById('aiPasteText').value);
+        if (!aiParsed.length) alert('문제를 찾지 못했어요. AI가 준 JSON을 그대로 붙여넣었는지 확인해 주세요.');
+    } catch (e) { alert('JSON 형식이 올바르지 않아요.\n' + e.message); }
+    renderAiResult();
+}
+
+// AI 응답(JSON) → 문제 목록
+let aiSubject = '';
+function parseAiJson(raw) {
+    let t = String(raw || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
+    const start = t.search(/[\[{]/); if (start > 0) t = t.slice(start);
+    const end = Math.max(t.lastIndexOf('}'), t.lastIndexOf(']')); if (end >= 0) t = t.slice(0, end + 1);
+    const data = JSON.parse(t);
+    const list = Array.isArray(data) ? data : (data.questions || []);
+    aiSubject = (!Array.isArray(data) && data.subject) ? String(data.subject).trim() : '';
+    const stripNo = c => String(c ?? '').replace(/^\s*(?:[①-⑩]|\(\d{1,2}\)|\d{1,2}[).]|[ㄱ-ㅎ][.)])\s*/, '').trim();
+    return list.map(item => {
+        const q = newQuestion();
+        const blanks = Array.isArray(item.blankAnswers) ? item.blankAnswers : [];
+        let bi = 0;
+        q.text = String(item.text ?? item.question ?? '').replace(/\r/g, '').replace(/\\n/g, '\n').trim()
+            .replace(/\[\[\s*빈칸\s*\]\]|\{\{\s*blank\s*\}\}/g, () => `{{blank:${encodeURIComponent(String(blanks[bi++] ?? '').trim())}}}`);
+        q.choices = (Array.isArray(item.choices) ? item.choices : []).map(stripNo).slice(0, MAX_CHOICES);
+        const ans = Array.isArray(item.answer) ? item.answer : (item.answer != null && item.answer !== '' ? [item.answer] : []);
+        q.answers = [...new Set(ans.map(a => parseInt(String(a).replace(/[①-⑩]/, m => CIRCLED.indexOf(m) + 1), 10) - 1).filter(i => i >= 0 && i < q.choices.length))].sort((a, b) => a - b);
+        q.explanation = String(item.explanation || '').trim();
+        q._no = String(item.number ?? '').trim();
+        q._on = true;
+        return q;
+    }).filter(q => q.text || q.choices.length);
+}
+function renderAiResult() {
+    const box = document.getElementById('aiResult');
+    box.classList.toggle('hidden', !aiParsed.length);
+    document.getElementById('aiResultList').innerHTML = aiParsed.map((q, i) => `
+        <label class="flex gap-3 border ${q._on ? 'border-rose-300 bg-rose-50/40' : 'border-slate-200 opacity-60'} rounded-xl p-3 cursor-pointer">
+            <input type="checkbox" ${q._on ? 'checked' : ''} onchange="aiParsed[${i}]._on=this.checked;renderAiResult()" class="mt-1 accent-rose-600">
+            <div class="flex-1 min-w-0 text-sm">
+                <div class="q-editor" style="min-height:0;line-height:1.8"><b class="mr-1">${q._no ? escapeHtml(q._no) + '.' : (i + 1) + '.'}</b>${renderBlankText(q.text, 'editor').replace(/\n/g, '<br>')}</div>
+                ${q.choices.length ? `<div class="mt-1 space-y-0.5 text-[13px] text-slate-600">${q.choices.map((c, ci) => `<div class="${q.answers.includes(ci) ? 'text-rose-600 font-bold' : ''}">${choiceMark(ci)} ${escapeHtml(c)}</div>`).join('')}</div>` : '<div class="text-[11px] text-slate-400 mt-1">주관식 (선지 없음)</div>'}
+                ${q.explanation ? `<div class="text-[11px] text-slate-500 mt-1">해설: ${escapeHtml(q.explanation)}</div>` : ''}
+            </div>
+        </label>`).join('');
+    const n = aiParsed.filter(q => q._on).length;
+    const btn = document.getElementById('aiAddBtn');
+    btn.disabled = !n; btn.textContent = n ? `${n}문제 시험지에 추가` : '시험지에 추가';
+}
+function toggleAiAll() { const on = !aiParsed.every(q => q._on); aiParsed.forEach(q => q._on = on); renderAiResult(); }
+function confirmAiAdd() {
+    const ex = curExam(); if (!ex) return;
+    const add = aiParsed.filter(q => q._on).map(({ _no, _on, ...q }) => q);
+    if (!add.length) return;
+    // 아직 아무것도 안 쓴 빈 문제는 정리
+    ex.questions = ex.questions.filter(q => q.text.trim() || q.choices.some(c => c.trim()) || q.answerText.trim() || q.explanation.trim());
+    ex.questions.push(...add);
+    if (!ex.subject && aiSubject) ex.subject = aiSubject;
+    save(); closeAiModal(); rerenderKeepScroll();
+    const cards = document.querySelectorAll('#questionList section[data-qid]');
+    cards[cards.length - add.length]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 // ── 백업 ──
