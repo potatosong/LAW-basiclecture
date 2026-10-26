@@ -1,11 +1,10 @@
-<!-- redeploy trigger -->
 <!DOCTYPE html>
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>뽀모도로 타이머</title>
-<meta name="theme-color" content="#6366f1">
+<meta name="theme-color" content="#6b7f95">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="뽀모도로">
@@ -13,191 +12,267 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
   :root[data-theme="dark"] {
-    --bg-1: #0f172a; --bg-2: #1e1b4b;
-    --card: #1e293b; --card-2: #16213a;
-    --text: #f1f5f9; --sub: #94a3b8;
-    --track: rgba(255,255,255,0.10);
-    --chip: rgba(255,255,255,0.08); --chip-active: rgba(255,255,255,0.18);
-    --border: rgba(255,255,255,0.08);
+    --stage: #15161b;
+    --card: #1a1b21;
+    --text: #e9e7e2; --sub: #8b8a8c;
+    --track: rgba(255,255,255,0.07);
+    --chip: transparent; --chip-active: rgba(255,255,255,0.06);
+    --border: rgba(255,255,255,0.09);
+    --border-soft: rgba(255,255,255,0.05);
   }
   :root[data-theme="light"] {
-    --bg-1: #eef2ff; --bg-2: #f8fafc;
-    --card: #ffffff; --card-2: #f8fafc;
-    --text: #0f172a; --sub: #64748b;
-    --track: rgba(15,23,42,0.08);
-    --chip: rgba(15,23,42,0.05); --chip-active: rgba(15,23,42,0.10);
-    --border: rgba(15,23,42,0.08);
+    --stage: #f7f5f1;
+    --card: #fbfaf8;
+    --text: #2b2a28; --sub: #8a8681;
+    --track: rgba(43,42,40,0.07);
+    --chip: transparent; --chip-active: rgba(43,42,40,0.05);
+    --border: rgba(43,42,40,0.10);
+    --border-soft: rgba(43,42,40,0.06);
   }
   html, body { height: 100%; }
   body {
-    font-family: 'Pretendard', 'Segoe UI', 'Malgun Gothic', sans-serif;
-    background: radial-gradient(circle at 20% 0%, var(--bg-2), var(--bg-1) 60%);
+    font-family: 'Pretendard', -apple-system, 'Segoe UI', 'Malgun Gothic', sans-serif;
+    background: var(--stage);
     color: var(--text);
     transition: background 0.5s ease, color 0.3s ease;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
   }
-  .card { background: var(--card); border: 1px solid var(--border); }
+  @media (max-width: 767px) {
+    body { overflow: auto; }
+  }
   .sub { color: var(--sub); }
-  .chip { background: var(--chip); transition: background 0.2s ease, color 0.2s ease; }
-  .chip.active { background: var(--chip-active); color: var(--text); }
-  .icon-btn { background: var(--chip); transition: transform 0.15s ease, background 0.2s ease; }
-  .icon-btn:hover { background: var(--chip-active); }
+  .chip {
+    background: var(--chip); color: var(--sub);
+    border: 1px solid transparent;
+    transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+  }
+  .chip.active { background: transparent; color: var(--text); border-color: var(--accent, var(--border)); }
+  .icon-btn {
+    background: var(--chip); border: 1px solid var(--border-soft);
+    transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease;
+  }
+  .icon-btn:hover { background: var(--chip-active); border-color: var(--border); }
   .icon-btn:active { transform: scale(0.92); }
 
-  .timer-wrap { position: relative; width: min(82vw, 380px); aspect-ratio: 1/1; margin: 0 auto; }
-  .donut { width: 100%; height: 100%; border-radius: 50%; box-shadow: 0 0 0 1px var(--border) inset; }
-  .donut-hole {
-    position: absolute; inset: 9%; border-radius: 50%; background: var(--card);
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    box-shadow: 0 8px 30px rgba(0,0,0,0.15);
+  .panel { background: var(--card); border: 1px solid var(--border-soft); }
+
+  /* --- pie timer: a solid disc that shrinks as time elapses, not a ring --- */
+  .timer-wrap { position: relative; width: min(32vh, 24vw, 300px); aspect-ratio: 1/1; }
+  .donut {
+    width: 100%; height: 100%; border-radius: 50%;
+    box-shadow: 0 0 0 1px var(--border-soft) inset, 0 12px 32px rgba(0,0,0,0.10);
+    transition: background 0.2s linear;
   }
-  #timeDisplay { font-size: clamp(2.75rem, 11vw, 4.25rem); font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
-  #taskDisplay { max-width: 80%; text-align: center; }
-  #taskDisplay:empty::before { content: '지금 집중할 일을 입력해보세요'; opacity: 0.4; }
+  #cycleDisplay { font-size: 0.65rem; letter-spacing: 0.08em; }
+
+  /* time shown as its own standalone element, separate from the donut */
+  #timeDisplay {
+    font-size: clamp(2.75rem, 5.5vw, 4.5rem);
+    font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+  #modeLabel { letter-spacing: 0.22em; font-weight: 600; }
 
   .ctrl-btn { transition: transform 0.15s ease, filter 0.2s ease; }
   .ctrl-btn:active { transform: scale(0.94); }
   @keyframes pulse-soft { 0%,100%{opacity:1} 50%{opacity:.55} }
   .running-pulse { animation: pulse-soft 2s ease-in-out infinite; }
 
-  input[type=number]::-webkit-inner-spin-button { opacity: 1; }
+  input[type=number] { -moz-appearance: textfield; }
+  input[type=number]::-webkit-inner-spin-button,
+  input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
   .fade-in { animation: fadeIn 0.25s ease-out; }
+  .preset {
+    background: var(--chip); border: 1px solid var(--border);
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  }
+  .preset:hover { background: var(--chip-active); }
+  .preset.active { border-color: var(--accent, var(--text)); color: var(--text); background: var(--chip-active); }
   @keyframes fadeIn { from{opacity:0; transform:translateY(4px)} to{opacity:1; transform:translateY(0)} }
 
-  .swatch { width: 30px; height: 30px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; transition: transform 0.15s ease, border-color 0.15s ease; }
-  .swatch:hover { transform: scale(1.1); }
-  .swatch.selected { border-color: var(--text); transform: scale(1.08); }
+  .swatch {
+    width: 24px; height: 24px; border-radius: 50%;
+    border: 2px solid var(--stage);
+    outline: 1px solid transparent;
+    cursor: pointer; transition: transform 0.15s ease, outline-color 0.15s ease;
+  }
+  .swatch:hover { transform: scale(1.12); }
+  .swatch.selected { outline-color: var(--sub); transform: scale(1.1); }
 
   select, input[type=number], input[type=text] {
-    background: var(--chip); color: var(--text); border: 1px solid var(--border);
+    background: transparent; color: var(--text); border: 1px solid var(--border);
   }
-  select:focus, input:focus { outline: none; }
+  select:focus, input:focus { outline: none; border-color: var(--sub); }
 
-  #focusOverlay { position: fixed; inset: 0; background: var(--bg-1); z-index: 200; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 24px; }
+  #taskInput { border: none; border-bottom: 1px solid var(--border); border-radius: 0; background: transparent; font-weight: 400; }
+  #taskInput:focus { border-bottom-color: var(--sub); }
+  #taskInput::placeholder { color: var(--sub); opacity: 0.7; }
+
+  .section-label { font-size: 0.68rem; font-weight: 600; letter-spacing: 0.1em; color: var(--sub); text-transform: uppercase; }
+  .divider { border-top: 1px solid var(--border-soft); }
+
+  #sidebar { width: min(360px, 100%); overscroll-behavior: contain; }
+  #sidebar::-webkit-scrollbar { width: 6px; }
+  #sidebar::-webkit-scrollbar-thumb { background: var(--track); border-radius: 3px; }
+  /* enforce the scrollable settings panel natively, independent of the Tailwind CDN */
+  @media (min-width: 768px) {
+    #sidebar { height: 100vh; overflow-y: auto; }
+  }
+
+  #focusOverlay { position: fixed; inset: 0; background: var(--stage); z-index: 200; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 28px; }
   #focusOverlay.hidden { display: none; }
+
+  main { overscroll-behavior: contain; }
+  @media (min-width: 768px) {
+    main { height: 100vh; overflow-y: auto; }
+  }
 </style>
 </head>
-<body class="min-h-screen flex items-center justify-center px-4 py-10">
+<body class="min-h-screen w-full flex flex-col md:flex-row" style="background-color: var(--stage);">
 
-<div class="w-full max-w-md">
+  <!-- main stage -->
+  <main class="flex-1 flex flex-col relative px-6 py-6 md:px-10 md:py-6 min-h-[100vh] md:min-h-0 md:h-screen md:overflow-y-auto">
 
-  <div class="flex items-center justify-between mb-5">
-    <h1 class="text-base font-semibold tracking-widest sub">🍅 POMODORO</h1>
-    <div class="flex items-center gap-2">
-      <button id="focusBtn" class="icon-btn w-9 h-9 rounded-full flex items-center justify-center text-sm" title="집중 모드">⛶</button>
-      <button id="themeBtn" class="icon-btn w-9 h-9 rounded-full flex items-center justify-center text-sm" title="테마 전환">🌙</button>
-    </div>
-  </div>
-
-  <div class="card rounded-3xl p-6 shadow-xl">
-
-    <!-- mode switcher -->
-    <div id="modeSwitch" class="flex gap-2 rounded-full p-1 mb-8 text-sm font-medium chip">
-      <button data-mode="work" class="chip active flex-1 py-2 rounded-full">집중</button>
-      <button data-mode="short" class="chip flex-1 py-2 rounded-full">짧은 휴식</button>
-      <button data-mode="long" class="chip flex-1 py-2 rounded-full">긴 휴식</button>
+    <div class="flex items-center justify-between mb-4 md:mb-4">
+      <h1 class="text-sm font-semibold tracking-widest sub">🍅 POMODORO</h1>
+      <div class="flex items-center gap-2">
+        <button id="focusBtn" class="icon-btn w-9 h-9 rounded-full flex items-center justify-center text-sm" title="집중 모드">⛶</button>
+        <button id="themeBtn" class="icon-btn w-9 h-9 rounded-full flex items-center justify-center text-sm" title="테마 전환">🌙</button>
+      </div>
     </div>
 
-    <!-- task label -->
-    <input id="taskInput" type="text" maxlength="60" placeholder="지금 집중할 일은?"
-      class="w-full text-center text-sm rounded-xl py-2 px-3 mb-6 outline-none focus:ring-2" style="--tw-ring-color: var(--track)">
+    <div class="flex-1 flex flex-col items-center justify-center gap-4 md:gap-4 py-2">
 
-    <!-- timer -->
-    <div class="timer-wrap mb-8">
-      <div id="donut" class="donut"></div>
-      <div class="donut-hole">
+      <!-- mode switcher -->
+      <div id="modeSwitch" class="flex gap-6 text-sm font-medium">
+        <button data-mode="work" class="chip active pb-2 border-b-2">집중</button>
+        <button data-mode="short" class="chip pb-2 border-b-2">짧은 휴식</button>
+        <button data-mode="long" class="chip pb-2 border-b-2">긴 휴식</button>
+      </div>
+
+      <!-- pie timer, standalone: a solid disc that shrinks as time elapses -->
+      <div class="timer-wrap">
+        <div id="donut" class="donut"></div>
+      </div>
+      <span id="cycleDisplay" class="text-xs sub tracking-wider -mt-4">완료 0</span>
+
+      <!-- time, displayed separately from the pie -->
+      <div class="flex flex-col items-center gap-1">
+        <span id="modeLabel" class="text-xs sub uppercase">집중 시간</span>
         <span id="timeDisplay">25:00</span>
-        <span id="taskDisplay" class="text-xs sub mt-1"></span>
-        <span id="cycleDisplay" class="mt-3 text-xs sub">완료한 뽀모도로: 0</span>
       </div>
+
+      <!-- task label -->
+      <input id="taskInput" type="text" maxlength="60" placeholder="지금 집중할 일은?"
+        class="w-full max-w-xs text-center text-sm py-2 px-1 outline-none">
+
+      <!-- controls -->
+      <div class="flex items-center justify-center gap-5">
+        <button id="resetBtn" class="ctrl-btn icon-btn w-14 h-14 rounded-full flex items-center justify-center text-xl" title="초기화">↺</button>
+        <button id="startBtn" class="ctrl-btn w-20 h-20 rounded-full flex items-center justify-center text-2xl font-bold text-white shadow-lg" title="시작/일시정지">▶</button>
+        <button id="skipBtn" class="ctrl-btn icon-btn w-14 h-14 rounded-full flex items-center justify-center text-xl" title="다음 단계로">⏭</button>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- settings sidebar -->
+  <aside id="sidebar" class="panel md:h-screen md:overflow-y-auto px-7 py-7 md:py-8 space-y-6 border-t md:border-t-0 md:border-l">
+
+    <div>
+      <h2 class="section-label">설정</h2>
     </div>
 
-    <!-- controls -->
-    <div class="flex items-center justify-center gap-4 mb-2">
-      <button id="resetBtn" class="ctrl-btn icon-btn w-14 h-14 rounded-full flex items-center justify-center text-xl" title="초기화">↺</button>
-      <button id="startBtn" class="ctrl-btn w-20 h-20 rounded-full flex items-center justify-center text-2xl font-bold text-white shadow-lg" title="시작/일시정지">▶</button>
-      <button id="skipBtn" class="ctrl-btn icon-btn w-14 h-14 rounded-full flex items-center justify-center text-xl" title="다음 단계로">⏭</button>
-    </div>
-
-  </div>
-
-  <!-- settings -->
-  <details class="text-sm sub mt-5">
-    <summary class="cursor-pointer text-center select-none">⚙ 설정</summary>
-    <div class="card rounded-2xl p-5 mt-3 fade-in space-y-5">
+    <div class="divider pt-6 space-y-5">
+      <div class="section-label">시간 (분)</div>
 
       <div>
-        <div class="mb-2 text-xs font-semibold">시간 (분)</div>
-        <div class="grid grid-cols-3 gap-3">
-          <label class="flex flex-col items-center gap-1">
-            <span class="text-xs">집중</span>
-            <input id="workInput" type="number" min="1" max="180" value="25" class="w-16 text-center rounded-lg py-1">
-          </label>
-          <label class="flex flex-col items-center gap-1">
-            <span class="text-xs">짧은 휴식</span>
-            <input id="shortInput" type="number" min="1" max="60" value="5" class="w-16 text-center rounded-lg py-1">
-          </label>
-          <label class="flex flex-col items-center gap-1">
-            <span class="text-xs">긴 휴식</span>
-            <input id="longInput" type="number" min="1" max="90" value="15" class="w-16 text-center rounded-lg py-1">
-          </label>
-        </div>
-      </div>
-
-      <div class="flex items-center justify-between">
-        <span class="text-xs font-semibold">긴 휴식 주기</span>
-        <div class="flex items-center gap-2">
-          <input id="intervalInput" type="number" min="2" max="10" value="4" class="w-14 text-center rounded-lg py-1">
-          <span class="text-xs">번째 집중마다</span>
+        <div class="text-xs sub mb-2">집중</div>
+        <div class="flex flex-wrap items-center gap-2">
+          <div class="preset-group flex flex-wrap gap-1.5" data-target="work" data-options="15,25,45,60"></div>
+          <input id="workInput" type="number" inputmode="numeric" min="1" max="180" value="25" class="w-14 text-center rounded-md py-1 text-xs">
         </div>
       </div>
 
       <div>
-        <div class="mb-2 text-xs font-semibold">타이머 색상</div>
-        <div id="colorSwatches" class="flex gap-3"></div>
+        <div class="text-xs sub mb-2">짧은 휴식</div>
+        <div class="flex flex-wrap items-center gap-2">
+          <div class="preset-group flex flex-wrap gap-1.5" data-target="short" data-options="5,10,15"></div>
+          <input id="shortInput" type="number" inputmode="numeric" min="1" max="60" value="5" class="w-14 text-center rounded-md py-1 text-xs">
+        </div>
       </div>
 
       <div>
-        <div class="mb-2 text-xs font-semibold">알림음</div>
-        <div class="flex items-center gap-3">
-          <select id="soundSelect" class="rounded-lg py-1.5 px-2 text-xs flex-1">
-            <option value="classic">클래식 (트리플 톤)</option>
-            <option value="chime">차임벨</option>
-            <option value="digital">디지털 비프</option>
-          </select>
-          <button id="previewSoundBtn" class="icon-btn rounded-lg px-3 py-1.5 text-xs">▶ 미리듣기</button>
-        </div>
-        <div class="flex items-center gap-2 mt-3">
-          <span class="text-xs w-10">볼륨</span>
-          <input id="volumeInput" type="range" min="0" max="100" value="70" class="flex-1 accent-indigo-400">
+        <div class="text-xs sub mb-2">긴 휴식</div>
+        <div class="flex flex-wrap items-center gap-2">
+          <div class="preset-group flex flex-wrap gap-1.5" data-target="long" data-options="15,20,30"></div>
+          <input id="longInput" type="number" inputmode="numeric" min="1" max="90" value="15" class="w-14 text-center rounded-md py-1 text-xs">
         </div>
       </div>
-
-      <div class="flex items-center justify-between">
-        <span class="text-xs">다음 단계 자동 시작</span>
-        <input id="autoStartInput" type="checkbox" class="w-4 h-4">
-      </div>
-      <div class="flex items-center justify-between">
-        <span class="text-xs">종료 5초 전 카운트다운 비프</span>
-        <input id="countdownBeepInput" type="checkbox" class="w-4 h-4" checked>
-      </div>
-
     </div>
-  </details>
 
-</div>
+    <div class="divider pt-6 flex items-center justify-between">
+      <span class="section-label">긴 휴식 주기</span>
+      <div class="flex items-center gap-2">
+        <input id="intervalInput" type="number" inputmode="numeric" min="2" max="10" value="4" class="w-12 text-center rounded-md py-1 text-xs">
+        <span class="text-xs sub">번째마다</span>
+      </div>
+    </div>
 
-<!-- focus mode overlay -->
+    <div class="divider pt-6">
+      <div class="mb-3 section-label">타이머 색상</div>
+      <div id="colorSwatches" class="flex gap-3"></div>
+    </div>
+
+    <div class="divider pt-6">
+      <div class="mb-3 section-label">알림음</div>
+      <div class="flex items-center gap-3">
+        <select id="soundSelect" class="rounded-md py-1.5 px-2 text-xs flex-1">
+          <option value="classic">클래식 (트리플 톤)</option>
+          <option value="chime">차임벨</option>
+          <option value="digital">디지털 비프</option>
+        </select>
+        <button id="previewSoundBtn" class="icon-btn rounded-md px-3 py-1.5 text-xs whitespace-nowrap">▶ 미리듣기</button>
+      </div>
+      <div class="flex items-center gap-2 mt-3">
+        <span class="text-xs sub w-10">볼륨</span>
+        <input id="volumeInput" type="range" min="0" max="100" value="70" class="flex-1">
+      </div>
+    </div>
+
+    <div class="divider pt-6 flex items-center justify-between">
+      <span class="text-xs sub">다음 단계 자동 시작</span>
+      <input id="autoStartInput" type="checkbox" class="w-4 h-4">
+    </div>
+    <div class="flex items-center justify-between">
+      <span class="text-xs sub">종료 5초 전 카운트다운 비프</span>
+      <input id="countdownBeepInput" type="checkbox" class="w-4 h-4" checked>
+    </div>
+
+  </aside>
+
+<!-- focus mode overlay: time on the left, pie timer on the right -->
 <div id="focusOverlay" class="hidden">
-  <span id="focusTime" class="font-extrabold tabular-nums" style="font-size: clamp(4rem, 22vw, 9rem);">25:00</span>
-  <span id="focusTask" class="sub text-lg"></span>
-  <button id="focusExitBtn" class="icon-btn rounded-full px-5 py-2 text-sm mt-4">✕ 나가기</button>
+  <button id="focusExitBtn" class="icon-btn rounded-full px-5 py-2 text-sm absolute top-8 right-8">✕ 나가기</button>
+  <div class="flex flex-col md:flex-row items-center justify-center gap-12 md:gap-24 px-6">
+    <div class="flex flex-col items-center gap-3 order-2 md:order-1">
+      <span id="focusModeLabel" class="sub text-sm tracking-[0.22em] font-semibold uppercase"></span>
+      <span id="focusTime" class="font-semibold tabular-nums" style="font-size: clamp(3.5rem, 12vw, 8.5rem); letter-spacing: -0.02em;">25:00</span>
+      <span id="focusTask" class="sub text-lg mt-1"></span>
+    </div>
+    <div class="timer-wrap order-1 md:order-2" style="width: min(40vh, 30vw, 340px);">
+      <div id="focusDonut" class="donut"></div>
+    </div>
+  </div>
 </div>
 
 <script>
-const ACCENT_COLORS = ['#6366f1', '#f43f5e', '#10b981', '#f59e0b', '#0ea5e9', '#8b5cf6'];
+const ACCENT_COLORS = ['#4e8fd0', '#da6e62', '#44a76d', '#dda74b', '#a575c7', '#d37545'];
+const DURATION_PRESETS = { work: [15, 25, 45, 60], short: [5, 10, 15], long: [15, 20, 30] };
 const SOUND_LABEL = { classic: '클래식 (트리플 톤)', chime: '차임벨', digital: '디지털 비프' };
 const DURATIONS = { work: 25, short: 5, long: 15 };
-const MODE_LABEL = { work: '집중', short: '짧은 휴식', long: '긴 휴식' };
+const MODE_LABEL = { work: '집중 시간', short: '짧은 휴식', long: '긴 휴식' };
 
 let longBreakInterval = 4;
 let accentColor = ACCENT_COLORS[0];
@@ -214,12 +289,14 @@ let completedPomodoros = 0;
 
 const root = document.documentElement;
 const timeDisplay = document.getElementById('timeDisplay');
-const taskDisplay = document.getElementById('taskDisplay');
+const modeLabel = document.getElementById('modeLabel');
 const cycleDisplay = document.getElementById('cycleDisplay');
 const startBtn = document.getElementById('startBtn');
 const resetBtn = document.getElementById('resetBtn');
 const skipBtn = document.getElementById('skipBtn');
 const donut = document.getElementById('donut');
+const focusDonut = document.getElementById('focusDonut');
+const focusModeLabel = document.getElementById('focusModeLabel');
 const modeSwitch = document.getElementById('modeSwitch');
 const workInput = document.getElementById('workInput');
 const shortInput = document.getElementById('shortInput');
@@ -260,6 +337,56 @@ function applyAccent() {
   document.querySelectorAll('.swatch').forEach(s => s.classList.toggle('selected', s.dataset.color === accentColor));
   startBtn.style.background = accentColor;
   startBtn.style.boxShadow = `0 8px 24px ${accentColor}55`;
+  root.style.setProperty('--accent', accentColor);
+  updateDisplay();
+}
+
+const durationInputs = { work: workInput, short: shortInput, long: longInput };
+
+function buildPresets() {
+  document.querySelectorAll('.preset-group').forEach(group => {
+    const target = group.dataset.target;
+    group.innerHTML = '';
+    group.dataset.options.split(',').forEach(v => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'preset px-2.5 py-1 rounded-md text-xs';
+      btn.textContent = v;
+      btn.dataset.value = v;
+      btn.addEventListener('click', () => {
+        DURATIONS[target] = parseInt(v, 10);
+        durationInputs[target].value = v;
+        onDurationChange();
+      });
+      group.appendChild(btn);
+    });
+  });
+  syncPresetActive();
+}
+
+function syncPresetActive() {
+  document.querySelectorAll('.preset-group').forEach(group => {
+    const target = group.dataset.target;
+    group.querySelectorAll('.preset').forEach(btn => {
+      btn.classList.toggle('active', parseInt(btn.dataset.value, 10) === DURATIONS[target]);
+    });
+  });
+}
+
+function onDurationChange() {
+  DURATIONS.work = Math.max(1, parseInt(workInput.value, 10) || 25);
+  DURATIONS.short = Math.max(1, parseInt(shortInput.value, 10) || 5);
+  DURATIONS.long = Math.max(1, parseInt(longInput.value, 10) || 15);
+  workInput.value = DURATIONS.work;
+  shortInput.value = DURATIONS.short;
+  longInput.value = DURATIONS.long;
+  syncPresetActive();
+  saveSettings();
+  if (!running) {
+    totalSeconds = DURATIONS[mode] * 60;
+    remaining = totalSeconds;
+    updateDisplay();
+  }
 }
 
 function loadSettings() {
@@ -284,8 +411,8 @@ function loadSettings() {
   intervalInput.value = longBreakInterval;
   soundSelect.value = soundType;
   volumeInput.value = Math.round(volume * 100);
-  cycleDisplay.textContent = `완료한 뽀모도로: ${completedPomodoros}`;
-  taskDisplay.textContent = taskInput.value;
+  cycleDisplay.textContent = `완료 ${completedPomodoros}`;
+  focusTask.textContent = taskInput.value;
   applyTheme(theme, false);
 }
 
@@ -323,13 +450,18 @@ function updateDisplay() {
   const text = formatTime(remaining);
   timeDisplay.textContent = text;
   focusTime.textContent = text;
-  const pct = 100 - (remaining / totalSeconds) * 100;
-  donut.style.background = `conic-gradient(${accentColor} 0% ${pct}%, var(--track) ${pct}% 100%)`;
+  // pie starts full and shrinks as time runs out, rather than a ring that fills up
+  const pct = (remaining / totalSeconds) * 100;
+  const gradient = `conic-gradient(${accentColor} 0% ${pct}%, var(--track) ${pct}% 100%)`;
+  donut.style.background = gradient;
+  focusDonut.style.background = gradient;
   document.title = `${text} - ${MODE_LABEL[mode]} | 뽀모도로`;
 }
 
 function setMode(newMode, resetTimer = true) {
   mode = newMode;
+  modeLabel.textContent = MODE_LABEL[mode];
+  focusModeLabel.textContent = MODE_LABEL[mode];
   document.querySelectorAll('#modeSwitch .chip').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.mode === mode);
   });
@@ -357,7 +489,7 @@ function finishSession() {
   playAlarm();
   if (mode === 'work') {
     completedPomodoros++;
-    cycleDisplay.textContent = `완료한 뽀모도로: ${completedPomodoros}`;
+    cycleDisplay.textContent = `완료 ${completedPomodoros}`;
     saveSettings();
     const next = completedPomodoros % longBreakInterval === 0 ? 'long' : 'short';
     setMode(next);
@@ -392,7 +524,10 @@ function beep(freq, start, dur, type = 'sine', peak = 0.3) {
 }
 
 function playTick() {
-  try { beep(1500, 0, 0.08, 'square', 0.15); } catch (e) {}
+  try {
+    beep(1760, 0, 0.35, 'sine', 0.16);
+    beep(2637, 0, 0.3, 'sine', 0.07);
+  } catch (e) {}
 }
 
 function playSound(type) {
@@ -469,20 +604,7 @@ resetBtn.addEventListener('click', resetCurrent);
 skipBtn.addEventListener('click', skipSession);
 
 [workInput, shortInput, longInput].forEach(input => {
-  input.addEventListener('change', () => {
-    DURATIONS.work = Math.max(1, parseInt(workInput.value) || 25);
-    DURATIONS.short = Math.max(1, parseInt(shortInput.value) || 5);
-    DURATIONS.long = Math.max(1, parseInt(longInput.value) || 15);
-    workInput.value = DURATIONS.work;
-    shortInput.value = DURATIONS.short;
-    longInput.value = DURATIONS.long;
-    saveSettings();
-    if (!running) {
-      totalSeconds = DURATIONS[mode] * 60;
-      remaining = totalSeconds;
-      updateDisplay();
-    }
-  });
+  input.addEventListener('change', onDurationChange);
 });
 
 intervalInput.addEventListener('change', () => {
@@ -507,7 +629,6 @@ autoStartInput.addEventListener('change', saveSettings);
 countdownBeepInput.addEventListener('change', saveSettings);
 
 taskInput.addEventListener('input', () => {
-  taskDisplay.textContent = taskInput.value;
   focusTask.textContent = taskInput.value;
   saveSettings();
 });
@@ -540,6 +661,7 @@ if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matc
 
 buildSwatches();
 loadSettings();
+buildPresets();
 setMode('work');
 </script>
 </body>
