@@ -1,0 +1,1157 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>논술 연습장</title>
+    <meta name="theme-color" content="#0f766e">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="논술 연습">
+    <link rel="manifest" href="./manifest-essay.json">
+    <link rel="apple-touch-icon" href="./icons/essay-180.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="./icons/essay-192.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        @keyframes fadeIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+        .animate-fade-in { animation: fadeIn 0.2s ease-out; }
+        html, body { height: 100%; overflow: hidden; }
+        #app { display: flex; height: 100vh; height: 100dvh; overflow: hidden; }
+        #sidebar { width: 280px; flex-shrink: 0; display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+        #mainArea { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+        @media (max-width: 767px) {
+            #sidebar { position: fixed; top: 0; left: 0; bottom: 0; z-index: 100; transform: translateX(-100%); transition: transform 0.3s ease; }
+            #sidebar.open { transform: translateX(0); }
+            #overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:99; }
+            #overlay.show { display: block; }
+        }
+        .serif { font-family: 'Batang', 'Nanum Myeongjo', 'Noto Serif KR', 'AppleMyungjo', serif; }
+        .passage { white-space: pre-wrap; word-break: break-word; line-height: 1.9; }
+        .answer-text { white-space: pre-wrap; word-break: break-word; line-height: 2; }
+
+        /* 쓰기 화면 */
+        #writeOverlay { position: fixed; inset: 0; background: #f8fafc; z-index: 200; display: flex; flex-direction: column; }
+        #writeOverlay.hidden { display: none; }
+        #writeBody { flex: 1; display: flex; min-height: 0; }
+        #writePrompt { width: 42%; max-width: 560px; border-right: 1px solid #e2e8f0; overflow-y: auto; background: #fff; }
+        #writePane { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+        @media (max-width: 899px) {
+            #writePrompt { position: absolute; inset: 0; width: 100%; max-width: none; z-index: 5; border: 0; }
+            #writePrompt.mhide { display: none; }
+        }
+        @media (min-width: 900px) { .only-mobile { display: none !important; } }
+        #essayInput, #outlineInput { resize: none; outline: none; line-height: 2; font-size: 16px; }
+
+        /* 원고지 */
+        .wgj { display: grid; grid-template-columns: repeat(20, 1fr); border-top: 1px solid #5eead4; border-left: 1px solid #5eead4; background: #fff; max-width: 640px; }
+        .wgj .c { aspect-ratio: 1 / 1; border-right: 1px solid #5eead4; border-bottom: 1px solid #5eead4; display: flex; align-items: center; justify-content: center;
+                  font-size: clamp(10px, 2.6vw, 17px); font-family: 'Batang', 'Nanum Myeongjo', 'Noto Serif KR', serif; color: #0f172a; overflow: hidden; white-space: nowrap; letter-spacing: -0.5px; }
+        .wgj .c.pair { font-size: clamp(8px, 2vw, 13px); }
+        .wgj .row-gap { grid-column: 1 / -1; height: 6px; background: #f0fdfa; border-right: 1px solid #5eead4; border-bottom: 1px solid #5eead4; }
+        .wgj .c.over { background: #fef2f2; }
+        .wgj .c.mark { background: #ccfbf1; }
+
+        .tab-on { background: #0f172a; color: #fff; }
+        .tab-off { background: #fff; color: #475569; }
+        .chip { display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:700; padding:2px 8px; border-radius:999px; }
+        .score-ring { width: 84px; height: 84px; border-radius: 50%; display:flex; align-items:center; justify-content:center; }
+        .diff-old { background:#fef2f2; color:#b91c1c; text-decoration: line-through; text-decoration-color: rgba(185,28,28,.5); }
+        .diff-new { background:#ecfdf5; color:#047857; }
+        @media print {
+            html, body { height: auto !important; overflow: visible !important; background: #fff !important; }
+            #sidebar, header, .no-print, #writeOverlay { display: none !important; }
+            #app, #mainArea, #mainScroll { display: block !important; height: auto !important; overflow: visible !important; }
+            * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        }
+    </style>
+</head>
+<body class="font-sans text-slate-800 bg-slate-100 antialiased">
+
+<div id="overlay" onclick="closeSidebar()"></div>
+
+<div id="syncToast" class="hidden fixed top-4 left-1/2 -translate-x-1/2 z-[400] bg-slate-900 text-white text-xs font-bold px-4 py-2 rounded-full shadow-xl flex items-center gap-2">
+    <span id="syncDot" class="w-2 h-2 rounded-full bg-yellow-400"></span>
+    <span id="syncMsg">동기화 중...</span>
+</div>
+
+<div id="app">
+    <!-- 사이드바 -->
+    <aside id="sidebar" class="bg-slate-900 text-slate-200">
+        <div class="p-4 border-b border-slate-800 flex items-center justify-between gap-2">
+            <button onclick="goHome()" class="text-left">
+                <div class="text-lg font-extrabold text-white"><i class="fa-solid fa-pen-nib text-teal-400 mr-1.5"></i>논술 연습장</div>
+                <div class="text-[11px] text-slate-400 mt-0.5 flex items-center gap-1.5"><span id="syncDot2" class="w-1.5 h-1.5 rounded-full bg-yellow-400"></span><span id="syncLabel">연결 중...</span></div>
+            </button>
+            <div class="flex flex-col gap-1">
+                <a href="./wrongnote.html" class="text-[11px] text-slate-400 hover:text-white border border-slate-700 rounded-lg px-2 py-0.5 text-center">📝 오답노트</a>
+                <a href="./wordbook.html" class="text-[11px] text-slate-400 hover:text-white border border-slate-700 rounded-lg px-2 py-0.5 text-center">📖 단어장</a>
+            </div>
+        </div>
+        <div class="p-3 space-y-2">
+            <button onclick="editTopic(null)" class="w-full bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold py-2.5 rounded-lg transition"><i class="fa-solid fa-plus mr-1"></i>새 논제 만들기</button>
+            <div class="relative">
+                <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs"></i>
+                <input id="searchInput" oninput="ui.search=this.value;renderSidebar()" placeholder="논제 검색" class="w-full bg-slate-800 text-sm text-white rounded-lg pl-8 pr-3 py-2 outline-none focus:ring-2 focus:ring-teal-500 placeholder:text-slate-500">
+            </div>
+            <div id="catFilter" class="flex flex-wrap gap-1"></div>
+        </div>
+        <div class="flex-1 overflow-y-auto px-2 pb-3" id="topicList"></div>
+        <div class="p-3 border-t border-slate-800 grid grid-cols-2 gap-2 text-[11px]">
+            <button onclick="exportJSON()" class="bg-slate-800 hover:bg-slate-700 py-2 rounded-lg"><i class="fa-solid fa-download mr-1"></i>백업 저장</button>
+            <label class="bg-slate-800 hover:bg-slate-700 py-2 rounded-lg text-center cursor-pointer"><i class="fa-solid fa-upload mr-1"></i>백업 불러오기<input type="file" accept=".json,application/json" class="hidden" onchange="importJSON(event)"></label>
+        </div>
+    </aside>
+
+    <!-- 메인 -->
+    <main id="mainArea">
+        <header class="bg-white border-b border-slate-200 px-4 py-3 flex items-center gap-3">
+            <button onclick="openSidebar()" class="md:hidden w-9 h-9 rounded-lg bg-slate-100 text-slate-600"><i class="fa-solid fa-bars"></i></button>
+            <div id="breadcrumb" class="flex-1 min-w-0 text-sm font-bold text-slate-700 truncate"></div>
+            <div id="headerActions" class="flex items-center gap-2"></div>
+        </header>
+        <div id="mainScroll" class="flex-1 overflow-y-auto">
+            <div id="mainContent" class="max-w-4xl mx-auto p-4 sm:p-6"></div>
+        </div>
+    </main>
+</div>
+
+<!-- 쓰기 화면 -->
+<div id="writeOverlay" class="hidden">
+    <div class="bg-white border-b border-slate-200 px-3 py-2 flex items-center gap-2">
+        <button onclick="closeWriting()" class="w-9 h-9 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600" title="나가기 (자동 저장됨)"><i class="fa-solid fa-arrow-left"></i></button>
+        <div class="min-w-0 flex-1">
+            <div id="wTitle" class="text-sm font-extrabold text-slate-800 truncate"></div>
+            <div id="wSaved" class="text-[11px] text-slate-400">자동 저장</div>
+        </div>
+        <button onclick="toggleTimer()" id="timerBtn" class="font-mono font-extrabold text-base px-3 py-1.5 rounded-lg bg-slate-900 text-white tabular-nums" title="눌러서 일시정지/계속">00:00</button>
+        <button onclick="submitWriting()" class="bg-teal-600 hover:bg-teal-500 text-white text-sm font-bold px-3 sm:px-4 py-2 rounded-lg"><i class="fa-solid fa-check sm:mr-1"></i><span class="hidden sm:inline">제출</span></button>
+    </div>
+    <div id="writeBody" class="relative">
+        <section id="writePrompt" class="mhide p-5">
+            <div class="flex items-center justify-between mb-3 only-mobile">
+                <span class="text-xs font-bold text-slate-400">문제 보기</span>
+                <button onclick="showPromptMobile(false)" class="text-xs font-bold bg-slate-900 text-white px-3 py-1.5 rounded-lg">답안으로 돌아가기</button>
+            </div>
+            <div id="wPromptBody"></div>
+        </section>
+        <section id="writePane">
+            <div class="px-3 pt-2 flex items-center gap-1.5 flex-wrap">
+                <button onclick="showPromptMobile(true)" class="only-mobile text-xs font-bold px-3 py-1.5 rounded-lg bg-amber-100 text-amber-800"><i class="fa-solid fa-file-lines mr-1"></i>문제</button>
+                <div class="flex rounded-lg overflow-hidden border border-slate-200 text-xs font-bold" id="wTabs">
+                    <button data-tab="outline" class="px-3 py-1.5">개요</button>
+                    <button data-tab="essay" class="px-3 py-1.5 border-l border-slate-200">답안</button>
+                    <button data-tab="grid" class="px-3 py-1.5 border-l border-slate-200">원고지</button>
+                </div>
+                <div class="flex-1"></div>
+                <button onclick="insertOutlineTemplate()" id="tplBtn" class="text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"><i class="fa-solid fa-list-ol mr-1"></i>개요 틀 넣기</button>
+            </div>
+            <div class="flex-1 min-h-0 p-3 pt-2 flex flex-col">
+                <textarea id="outlineInput" class="hidden flex-1 w-full bg-white border border-slate-200 rounded-xl p-4" placeholder="쓰기 전에 생각을 정리해요.&#10;&#10;- 논제가 묻는 것은?&#10;- 내 주장(결론) 한 문장&#10;- 근거 1, 2 (제시문 어디를 쓸지)&#10;- 예상 반론과 재반박"></textarea>
+                <textarea id="essayInput" class="flex-1 w-full bg-white border border-slate-200 rounded-xl p-4 serif" placeholder="여기에 답안을 써요. 문단은 줄바꿈으로 나눠요." spellcheck="false"></textarea>
+                <div id="gridView" class="hidden flex-1 overflow-y-auto bg-white border border-slate-200 rounded-xl p-3"></div>
+            </div>
+            <div class="bg-white border-t border-slate-200 px-3 py-2">
+                <div class="flex items-center gap-3 text-xs text-slate-500 flex-wrap">
+                    <span><b id="cWith" class="text-slate-800 text-sm tabular-nums">0</b>자 <span class="text-slate-400">(공백 포함)</span></span>
+                    <span><b id="cWithout" class="tabular-nums">0</b>자 (공백 제외)</span>
+                    <span><b id="cPara" class="tabular-nums">0</b>문단</span>
+                    <span><b id="cSent" class="tabular-nums">0</b>문장</span>
+                    <span id="cRange" class="ml-auto font-bold"></span>
+                </div>
+                <div class="h-1.5 bg-slate-100 rounded-full mt-1.5 relative overflow-hidden">
+                    <div id="cBar" class="h-full bg-teal-500 rounded-full transition-all" style="width:0"></div>
+                    <div id="cMinMark" class="absolute top-0 bottom-0 w-0.5 bg-slate-400 hidden"></div>
+                </div>
+            </div>
+        </section>
+    </div>
+</div>
+
+<!-- 논제 편집 모달 -->
+<div id="topicModal" class="hidden fixed inset-0 bg-black/60 z-[150] flex items-center justify-center p-3">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[94vh] flex flex-col">
+        <div class="px-5 pt-5 pb-3 border-b border-slate-100 flex items-center">
+            <h3 id="topicModalTitle" class="font-extrabold text-slate-800 flex-1">새 논제</h3>
+            <button onclick="closeTopicModal()" class="w-8 h-8 rounded-lg hover:bg-slate-100 text-slate-400"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="p-5 space-y-4 overflow-y-auto">
+            <div class="grid sm:grid-cols-3 gap-3">
+                <label class="sm:col-span-2 block"><span class="text-xs font-bold text-slate-500">제목</span>
+                    <input id="tTitle" class="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-teal-500" placeholder="예) 법적 안정성과 정의의 충돌"></label>
+                <label class="block"><span class="text-xs font-bold text-slate-500">분류</span>
+                    <input id="tCat" list="catList" class="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-teal-500" placeholder="예) 법철학"><datalist id="catList"></datalist></label>
+            </div>
+            <label class="block"><span class="text-xs font-bold text-slate-500">제시문 <span class="font-normal text-slate-400">— [가], [나]처럼 여러 개를 이어 써도 돼요</span></span>
+                <textarea id="tPassage" rows="9" class="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-teal-500 serif leading-7" placeholder="[가] ...&#10;&#10;[나] ..."></textarea></label>
+            <label class="block"><span class="text-xs font-bold text-slate-500">문항 (논제)</span>
+                <textarea id="tQuestion" rows="3" class="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-teal-500" placeholder="예) 제시문 [가]의 관점에서 [나]의 판단을 평가하고, 자신의 견해를 논술하시오."></textarea></label>
+            <div class="grid grid-cols-3 gap-3">
+                <label class="block"><span class="text-xs font-bold text-slate-500">최소 글자수</span>
+                    <input id="tMin" type="number" min="0" step="50" class="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-teal-500" placeholder="800"></label>
+                <label class="block"><span class="text-xs font-bold text-slate-500">최대 글자수</span>
+                    <input id="tMax" type="number" min="0" step="50" class="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-teal-500" placeholder="1000"></label>
+                <label class="block"><span class="text-xs font-bold text-slate-500">제한 시간(분)</span>
+                    <input id="tTime" type="number" min="0" step="5" class="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-teal-500" placeholder="60"></label>
+            </div>
+            <label class="block"><span class="text-xs font-bold text-slate-500">채점 포인트·예시 답안 메모 <span class="font-normal text-slate-400">(선택, AI 첨삭 때 참고해요)</span></span>
+                <textarea id="tGuide" rows="3" class="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-teal-500" placeholder="예) [가]의 '법적 안정성' 개념을 정확히 요약했는지, 반론을 다뤘는지"></textarea></label>
+            <p class="text-[11px] text-slate-400">글자수는 공백 포함으로 셉니다. 비워 두면 제한 없이 연습해요.</p>
+        </div>
+        <div class="px-5 py-4 border-t border-slate-100 flex gap-2">
+            <button onclick="closeTopicModal()" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-2.5 rounded-xl text-sm font-bold">취소</button>
+            <button onclick="saveTopicModal()" class="flex-[2] bg-teal-600 hover:bg-teal-500 text-white py-2.5 rounded-xl text-sm font-bold">저장</button>
+        </div>
+    </div>
+</div>
+
+<!-- AI 첨삭 모달 -->
+<div id="aiModal" class="hidden fixed inset-0 bg-black/60 z-[250] flex items-center justify-center p-3">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[92vh] flex flex-col">
+        <div class="px-5 pt-5 pb-3 border-b border-slate-100">
+            <div class="flex items-center gap-2">
+                <h3 class="font-extrabold text-slate-800 flex-1"><i class="fa-solid fa-wand-magic-sparkles text-teal-500 mr-1.5"></i>AI 첨삭 받기</h3>
+                <button onclick="closeAiModal()" class="w-8 h-8 rounded-lg hover:bg-slate-100 text-slate-400"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="flex mt-3 rounded-lg overflow-hidden border border-slate-200 text-xs font-bold" id="aiTabs">
+                <button data-tab="direct" class="flex-1 py-2">바로 첨삭 (Gemini)</button>
+                <button data-tab="paste" class="flex-1 py-2 border-l border-slate-200">다른 AI 사용 (복사·붙여넣기)</button>
+            </div>
+        </div>
+        <div class="p-5 overflow-y-auto space-y-3">
+            <div id="aiTabDirect" class="space-y-3">
+                <div id="aiKeyBox" class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-900 space-y-2">
+                    <p><b>Gemini API 키</b>가 필요해요. <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" class="underline font-bold">Google AI Studio</a>에서 무료로 만들 수 있어요. 키는 이 기기에만 저장돼요 (오답노트와 같이 씀).</p>
+                    <div class="flex gap-2">
+                        <input id="aiKeyInput" type="password" class="flex-1 border border-amber-300 rounded-lg px-2 py-1.5 text-xs outline-none bg-white" placeholder="AIza...">
+                        <button onclick="saveAiKey()" class="bg-amber-600 text-white font-bold px-3 rounded-lg">저장</button>
+                    </div>
+                </div>
+                <div id="aiKeySaved" class="hidden text-xs text-slate-500 flex items-center gap-2"><i class="fa-solid fa-key text-teal-500"></i>API 키 저장됨 <button onclick="resetAiKey()" class="underline">바꾸기</button></div>
+                <p class="text-sm text-slate-600">논제·제시문·개요·답안을 보내 5개 기준으로 채점하고, 고칠 문장과 모범 개요를 받아요.</p>
+                <button id="aiRunBtn" onclick="runAiReview()" class="w-full bg-teal-600 hover:bg-teal-500 disabled:opacity-50 text-white font-bold py-3 rounded-xl text-sm"><i class="fa-solid fa-paper-plane mr-1"></i>첨삭 요청</button>
+                <div id="aiStatus" class="text-xs text-slate-500 hidden"></div>
+            </div>
+            <div id="aiTabPaste" class="hidden space-y-3">
+                <p class="text-sm text-slate-600"><b>1.</b> 아래 버튼으로 첨삭 요청문을 복사해 ChatGPT·Claude 등에 붙여넣어요.</p>
+                <button onclick="copyAiPrompt()" class="w-full bg-slate-900 hover:bg-slate-700 text-white font-bold py-2.5 rounded-xl text-sm"><i class="fa-regular fa-copy mr-1"></i>요청문 복사</button>
+                <p class="text-sm text-slate-600"><b>2.</b> AI가 준 JSON 답을 그대로 붙여넣어요.</p>
+                <textarea id="aiPasteText" rows="7" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono outline-none focus:ring-2 focus:ring-teal-500" placeholder='{"total": 78, "scores": [...], ...}'></textarea>
+                <button onclick="applyPastedAi()" class="w-full bg-teal-600 hover:bg-teal-500 text-white font-bold py-2.5 rounded-xl text-sm">결과 저장</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 확인 창 (브라우저 기본 창 대신) -->
+<div id="dlg" class="hidden fixed inset-0 bg-black/60 z-[500] flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm animate-fade-in">
+        <p id="dlgMsg" class="text-sm text-slate-700 whitespace-pre-wrap leading-6"></p>
+        <div id="dlgBtns" class="mt-5 flex flex-col gap-2"></div>
+    </div>
+</div>
+
+<!-- Firebase (영단어장·오답노트와 같은 프로젝트, 별도 문서에 저장) -->
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import { getFirestore, doc, onSnapshot, setDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+    const app = initializeApp({
+        apiKey:"AIzaSyAeplPxURZu9o0OQAFY5RBh1BP0P0dLcSc",
+        authDomain:"my-eng-wordbook.firebaseapp.com",
+        projectId:"my-eng-wordbook",
+        storageBucket:"my-eng-wordbook.firebasestorage.app",
+        messagingSenderId:"613424514679",
+        appId:"1:613424514679:web:94ecf9cc4898db06876872"
+    });
+    const db = getFirestore(app);
+    const DATA_DOC = doc(db, 'wordbook', 'essay');
+    window._saveToFirestore = async (data) => {
+        try { window.showSync('저장 중...','#facc15'); await setDoc(DATA_DOC, data); window.showSync('동기화됨','#34d399'); }
+        catch(e) { window.showSync('저장 실패','#f87171'); }
+    };
+    onSnapshot(DATA_DOC, snap => {
+        window.showSync('동기화됨','#34d399');
+        window._onRemote(snap.exists() ? snap.data() : null);
+    }, () => { window.showSync('오프라인','#f87171'); });
+</script>
+
+<script>
+const LS_KEY = 'essay_data_v1';
+const LS_UI = 'essay_ui_v1';
+const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash'];
+const CRITERIA = ['논제 이해', '논리 구성', '근거의 타당성', '제시문 활용', '표현과 분량'];
+const SELF_CHECK = [
+    '논제가 요구하는 것(요약·비교·평가·견해)을 빠짐없이 했다',
+    '서론에 내 입장이 분명히 드러난다',
+    '문단마다 중심 문장이 하나씩 있다',
+    '제시문 내용을 베끼지 않고 내 말로 바꿔 썼다',
+    '예상 반론을 다루고 재반박했다',
+    '결론이 서론의 주장과 어긋나지 않는다',
+    '구어체·비문·맞춤법 오류를 고쳤다',
+    '분량 조건을 지켰다'
+];
+
+// 처음 쓰는 사람을 위한 예시 논제 (고정 id라 여러 기기에서 겹치지 않음)
+const SAMPLE_TOPICS = [
+    {
+        id: 'sample-justice', u: 1, category: '법철학', title: '법적 안정성과 정의가 부딪칠 때',
+        passage: '[가] 법은 사람들이 앞날을 예측하고 계획을 세울 수 있게 해 준다. 오늘 허용된 행동이 내일 갑자기 처벌된다면 누구도 안심하고 살 수 없다. 그래서 이미 확정된 판결은 다소 부당해 보이더라도 쉽게 뒤집어서는 안 되며, 법률은 공포된 뒤에야 효력을 가진다. 법이 다소 불완전하더라도 지켜질 때 사회는 질서를 유지한다.\n\n[나] 어떤 법률이 특정 집단을 차별하도록 만들어졌고 실제로 큰 고통을 낳았다고 하자. 그 법률이 정해진 절차를 거쳐 만들어졌다는 이유만으로 따라야 하는가. 법이 정의를 실현하려는 노력조차 포기한 채 극단적으로 부정의하다면, 그것은 이미 법으로서의 자격을 잃었다고 보아야 한다.\n\n[다] 어느 나라에서 과거 정권 아래 적법하게 이루어진 재산 몰수를 새 정부가 무효로 하고 원래 주인에게 돌려주려 한다. 그러나 그 사이 몰수된 재산을 정상적으로 사들인 사람들이 수십 년간 거기서 생활해 왔다.',
+        question: '제시문 [가]와 [나]의 관점을 비교하고, 이를 바탕으로 [다]의 상황에서 새 정부가 어떤 원칙에 따라 판단해야 하는지 자신의 견해를 논술하시오.',
+        minChars: 900, maxChars: 1100, timeLimit: 60,
+        guide: '[가] 법적 안정성·예측 가능성, [나] 극단적 부정의의 법은 효력 상실(정의 우선). [다]에서 원소유자의 권리 회복과 선의의 매수인 보호를 어떻게 조정하는지(보상, 기준 시점 등) 구체적 대안이 있으면 높은 점수.'
+    },
+    {
+        id: 'sample-speech', u: 1, category: '헌법', title: '혐오 표현, 어디까지 규제할 수 있나',
+        passage: '[가] 생각을 자유롭게 말할 수 있어야 틀린 생각도 공개적으로 반박될 수 있다. 불쾌한 의견을 국가가 미리 걸러 낸다면, 무엇이 불쾌한지를 정하는 권력이 결국 비판적 목소리까지 억누를 위험이 있다. 나쁜 말에 대한 처방은 더 많은 말이다.\n\n[나] 특정 집단을 열등하다고 반복해서 말하는 표현은 듣는 사람에게 단지 불쾌감만 주는 것이 아니다. 그 집단의 구성원은 공적 토론에 나서기를 두려워하게 되고, 결국 말할 기회 자체를 잃는다. 어떤 말은 다른 사람의 말할 자유를 빼앗는다.',
+        question: '[가]와 [나]의 주장을 각각 요약하고, 온라인 공간의 혐오 표현을 법으로 규제하는 것에 대한 자신의 입장을 근거를 들어 논술하시오.',
+        minChars: 700, maxChars: 900, timeLimit: 50,
+        guide: '[가] 사상의 자유시장·위축 효과·규제 권력 남용 우려, [나] 혐오 표현의 침묵 효과(표현의 자유끼리의 충돌). 규제 범위·주체·기준을 구체화하면 좋음.'
+    },
+    {
+        id: 'sample-ai', u: 1, category: '법과 사회', title: '자율주행차 사고의 책임은 누구에게',
+        passage: '[가] 전통적으로 법은 잘못을 저지른 사람에게 책임을 물어 왔다. 책임을 지려면 결과를 예견할 수 있었고 피할 수 있었어야 한다. 그런데 스스로 학습하며 판단하는 기계의 행동은 만든 사람조차 완전히 예측하기 어렵다.\n\n[나] 위험한 물건으로 이익을 얻는 사람은 그 물건이 낳는 손해도 함께 부담하는 것이 공평하다. 잘못이 있었는지를 따지기 어려운 영역일수록, 손해를 가장 잘 분산할 수 있는 쪽이 먼저 책임을 지게 하는 편이 피해자 보호에 유리하다.',
+        question: '완전 자율주행 차량이 보행자를 다치게 한 사고에서 탑승자, 제조사, 소프트웨어 개발자 중 누가 어떤 책임을 져야 하는지 [가]와 [나]를 활용하여 논술하시오.',
+        minChars: 800, maxChars: 1000, timeLimit: 60,
+        guide: '[가] 과실 책임주의와 예견 가능성의 한계, [나] 위험 책임·손해 분산(보험). 책임 주체별 구분과 제도적 대안(의무 보험, 기록 장치 등) 제시.'
+    }
+];
+
+let state = { topics: [], answers: [], deleted: {}, updatedAt: 0 };
+let ui = { view: 'home', topicId: null, answerId: null, search: '', cat: '', wTab: 'essay' };
+let pendingRemote = null;
+let saveTimer = null;
+let writing = null;     // { answerId, startTick, running }
+let timerInt = null;
+
+// ── 유틸 ──
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+const $ = id => document.getElementById(id);
+function fmtDateTime(ts) { if (!ts) return '-'; const d = new Date(ts); return `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; }
+function fmtDate(ts) { return fmtDateTime(ts).slice(0, 10); }
+function dayKey(ts) { const d = new Date(ts); return `${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`; }
+function fmtDur(sec) { sec = Math.max(0, Math.round(sec || 0)); const m = Math.floor(sec / 60), s = sec % 60; return m >= 60 ? `${Math.floor(m/60)}시간 ${m%60}분` : `${m}분 ${String(s).padStart(2,'0')}초`; }
+function clock(sec) { const neg = sec < 0; sec = Math.abs(Math.floor(sec)); const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60; return (neg ? '+' : '') + (h ? h + ':' + String(m).padStart(2,'0') : String(m).padStart(2,'0')) + ':' + String(s).padStart(2,'0'); }
+function scoreColor(v) { return v >= 85 ? '#0d9488' : v >= 70 ? '#2563eb' : v >= 55 ? '#d97706' : '#e11d48'; }
+
+// 확인 창: buttons = [{label, value, style}] → 고른 value (바깥 누르거나 Esc면 null)
+let dlgResolve = null;
+function uiDialog(msg, buttons) {
+    if (dlgResolve) dlgResolve(null);
+    $('dlgMsg').textContent = msg;
+    const styles = { primary: 'bg-teal-600 hover:bg-teal-500 text-white', danger: 'bg-rose-600 hover:bg-rose-500 text-white', plain: 'bg-slate-100 hover:bg-slate-200 text-slate-700' };
+    $('dlgBtns').innerHTML = buttons.map((b, i) => `<button data-i="${i}" class="w-full py-2.5 rounded-xl text-sm font-bold ${styles[b.style || 'plain']}">${escapeHtml(b.label)}</button>`).join('');
+    $('dlg').classList.remove('hidden');
+    return new Promise(res => {
+        dlgResolve = v => { dlgResolve = null; $('dlg').classList.add('hidden'); res(v); };
+        $('dlgBtns').querySelectorAll('button').forEach(el => el.onclick = () => dlgResolve(buttons[+el.dataset.i].value));
+        setTimeout(() => $('dlgBtns').querySelector('button')?.focus(), 30);
+    });
+}
+const uiAlert = msg => uiDialog(msg, [{ label: '확인', value: true, style: 'primary' }]);
+const uiConfirm = (msg, ok = '확인', style = 'primary') => uiDialog(msg, [{ label: ok, value: true, style }, { label: '취소', value: false }]).then(v => !!v);
+document.addEventListener('click', e => { if (e.target.id === 'dlg' && dlgResolve) dlgResolve(null); });
+
+window.showSync = function (msg, color) {
+    ['syncDot', 'syncDot2'].forEach(id => { const el = $(id); if (el) el.style.background = color; });
+    const lb = $('syncLabel'); if (lb) lb.textContent = msg;
+    const t = $('syncToast'), m = $('syncMsg');
+    if (m) m.textContent = msg;
+    if (t) { t.classList.remove('hidden'); clearTimeout(window._tt); window._tt = setTimeout(() => t.classList.add('hidden'), 1500); }
+};
+function toast(msg) { window.showSync(msg, '#5eead4'); }
+
+// ── 글자수 ──
+function countText(t) {
+    t = t || '';
+    const withSp = [...t.replace(/\r/g, '').replace(/\n/g, '')].length;
+    const without = [...t.replace(/\s/g, '')].length;
+    const paras = t.split(/\n+/).filter(p => p.trim()).length;
+    const sents = (t.match(/[^.!?。\n]+[.!?。]+/g) || []).filter(s => s.trim()).length;
+    return { withSp, without, paras, sents };
+}
+
+// ── 저장 / 동기화 (항목별 수정 시각 u로 합치기) ──
+function normalize(data) {
+    const d = data && typeof data === 'object' ? data : {};
+    const topics = Array.isArray(d.topics) ? d.topics : [];
+    const answers = Array.isArray(d.answers) ? d.answers : [];
+    topics.forEach(t => { t.title = t.title || '제목 없음'; t.passage = t.passage || ''; t.question = t.question || ''; t.category = t.category || ''; t.guide = t.guide || ''; });
+    answers.forEach(a => { a.text = a.text || ''; a.outline = a.outline || ''; a.check = Array.isArray(a.check) ? a.check : []; a.memo = a.memo || ''; a.duration = a.duration || 0; });
+    const deleted = d.deleted && typeof d.deleted === 'object' ? { ...d.deleted } : {};
+    return { topics, answers, deleted, updatedAt: d.updatedAt || 0 };
+}
+let snap = new Map();
+const itemKey = x => { const { u, ...rest } = x; return JSON.stringify(rest); };
+function allItems(st = state) { return [...st.topics, ...st.answers]; }
+function resetSnap() { snap = new Map(allItems().map(x => [x.id, itemKey(x)])); }
+function stampChanges() {
+    const now = Date.now(); const seen = new Set();
+    for (const x of allItems()) {
+        seen.add(x.id);
+        const k = itemKey(x);
+        if (snap.get(x.id) !== k) { x.u = now; snap.set(x.id, itemKey(x)); }
+    }
+    for (const id of [...snap.keys()]) if (!seen.has(id)) { state.deleted[id] = now; snap.delete(id); }
+    const old = now - 90 * 864e5;
+    for (const id in state.deleted) if (state.deleted[id] < old) delete state.deleted[id];
+}
+function mergeStates(a, b) {
+    const deleted = { ...a.deleted };
+    for (const id in b.deleted) deleted[id] = Math.max(deleted[id] || 0, b.deleted[id]);
+    const pick = (la, lb) => {
+        const m = new Map();
+        for (const x of [...la, ...lb]) { const cur = m.get(x.id); if (!cur || (x.u || 0) > (cur.u || 0)) m.set(x.id, x); }
+        return [...m.values()].filter(x => !(deleted[x.id] >= (x.u || 0)));
+    };
+    return {
+        topics: JSON.parse(JSON.stringify(pick(a.topics, b.topics))),
+        answers: JSON.parse(JSON.stringify(pick(a.answers, b.answers))),
+        deleted, updatedAt: Math.max(a.updatedAt || 0, b.updatedAt || 0)
+    };
+}
+const canon = st => JSON.stringify([
+    [...st.topics].sort((x, y) => x.id < y.id ? -1 : 1),
+    [...st.answers].sort((x, y) => x.id < y.id ? -1 : 1),
+    Object.keys(st.deleted).sort().map(k => [k, st.deleted[k]])
+]);
+let lastRemote = null;
+
+function loadLocal() {
+    let raw = null;
+    try { raw = localStorage.getItem(LS_KEY); } catch (e) {}
+    try { state = normalize(JSON.parse(raw || 'null')); } catch (e) { state = normalize(null); }
+    if (raw === null) state.topics = JSON.parse(JSON.stringify(SAMPLE_TOPICS));
+    try { Object.assign(ui, JSON.parse(localStorage.getItem(LS_UI) || '{}')); } catch (e) {}
+    resetSnap();
+}
+function saveUI() { try { localStorage.setItem(LS_UI, JSON.stringify(ui)); } catch (e) {} }
+function saveLocalOnly() { try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (e) {} }
+function pushRemote() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+        if (!window._saveToFirestore) return;
+        const out = lastRemote ? mergeStates(state, lastRemote) : state;
+        out.updatedAt = Date.now();
+        window._saveToFirestore(JSON.parse(JSON.stringify(out)));
+    }, 900);
+}
+function save() { stampChanges(); state.updatedAt = Date.now(); saveLocalOnly(); pushRemote(); }
+function isBusy() {
+    if (writing) return true;
+    const a = document.activeElement;
+    return !!(a && (a.isContentEditable || /INPUT|TEXTAREA|SELECT/.test(a.tagName)) && !a.closest('#sidebar'));
+}
+window._onRemote = function (data) {
+    stampChanges();
+    if (!data) { lastRemote = null; if (state.answers.length || state.topics.some(t => !t.id.startsWith('sample-'))) pushRemote(); return; }
+    lastRemote = normalize(data);
+    const merged = mergeStates(state, lastRemote);
+    if (canon(merged) !== canon(state)) {
+        if (isBusy()) pendingRemote = merged;
+        else applyMerged(merged);
+    }
+    if (canon(merged) !== canon(lastRemote)) pushRemote();
+};
+function applyMerged(merged) {
+    state = merged; pendingRemote = null;
+    resetSnap(); saveLocalOnly(); render();
+}
+document.addEventListener('focusout', () => setTimeout(() => { if (pendingRemote && !isBusy()) applyMerged(mergeStates(state, lastRemote || pendingRemote)); }, 300));
+
+// ── 조회 ──
+const topicById = id => state.topics.find(t => t.id === id);
+const answerById = id => state.answers.find(a => a.id === id);
+const answersOf = tid => state.answers.filter(a => a.topicId === tid).sort((x, y) => (y.createdAt || 0) - (x.createdAt || 0));
+const doneAnswers = () => state.answers.filter(a => a.status === 'done');
+const categories = () => [...new Set(state.topics.map(t => t.category).filter(Boolean))].sort();
+
+// ── 사이드바 ──
+function openSidebar() { $('sidebar').classList.add('open'); $('overlay').classList.add('show'); }
+function closeSidebar() { $('sidebar').classList.remove('open'); $('overlay').classList.remove('show'); }
+function renderSidebar() {
+    const cats = categories();
+    if (ui.cat && !cats.includes(ui.cat)) ui.cat = '';
+    $('catFilter').innerHTML = cats.length ? ['', ...cats].map(c => `<button onclick="ui.cat='${escapeHtml(c)}';saveUI();renderSidebar()" class="text-[11px] font-bold px-2 py-0.5 rounded-full ${ui.cat === c ? 'bg-teal-500 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}">${c ? escapeHtml(c) : '전체'}</button>`).join('') : '';
+    const q = (ui.search || '').trim().toLowerCase();
+    const list = state.topics
+        .filter(t => !ui.cat || t.category === ui.cat)
+        .filter(t => !q || (t.title + t.question + t.passage + t.category).toLowerCase().includes(q))
+        .sort((x, y) => (lastActivity(y) - lastActivity(x)) || x.title.localeCompare(y.title));
+    $('topicList').innerHTML = list.length ? list.map(t => {
+        const ans = answersOf(t.id), done = ans.filter(a => a.status === 'done'), draft = ans.some(a => a.status !== 'done');
+        const best = Math.max(-1, ...done.map(a => a.ai?.total ?? -1));
+        const on = ui.topicId === t.id && ui.view !== 'home';
+        return `<button onclick="openTopic('${t.id}')" class="w-full text-left px-3 py-2.5 rounded-lg mb-0.5 transition ${on ? 'bg-slate-800 text-white' : 'hover:bg-slate-800/60'}">
+            <div class="text-sm font-bold truncate">${escapeHtml(t.title)}</div>
+            <div class="flex items-center gap-1.5 mt-1 text-[10px] text-slate-400">
+                ${t.category ? `<span class="bg-slate-700/70 px-1.5 rounded">${escapeHtml(t.category)}</span>` : ''}
+                <span>답안 ${done.length}</span>
+                ${best >= 0 ? `<span style="color:${scoreColor(best)}" class="font-bold">최고 ${best}점</span>` : ''}
+                ${draft ? '<span class="text-amber-400 font-bold">● 쓰는 중</span>' : ''}
+            </div></button>`;
+    }).join('') : `<div class="text-xs text-slate-500 text-center py-8">${state.topics.length ? '검색 결과가 없어요' : '논제를 만들어 시작해요'}</div>`;
+}
+function lastActivity(t) { return Math.max(t.createdAt || 0, ...answersOf(t.id).map(a => a.updatedAt || a.createdAt || 0)); }
+
+// ── 화면 전환 ──
+function goHome() { ui.view = 'home'; ui.topicId = null; ui.answerId = null; saveUI(); render(); closeSidebar(); }
+function openTopic(id) { ui.view = 'topic'; ui.topicId = id; ui.answerId = null; saveUI(); render(); closeSidebar(); $('mainScroll').scrollTop = 0; }
+function openAnswer(id) { const a = answerById(id); if (!a) return; ui.view = 'answer'; ui.topicId = a.topicId; ui.answerId = id; saveUI(); render(); $('mainScroll').scrollTop = 0; }
+
+function render() {
+    if (ui.view === 'topic' && !topicById(ui.topicId)) ui.view = 'home';
+    if (ui.view === 'answer' && !answerById(ui.answerId)) ui.view = ui.topicId && topicById(ui.topicId) ? 'topic' : 'home';
+    renderSidebar();
+    if (ui.view === 'topic') renderTopic();
+    else if (ui.view === 'answer') renderAnswer();
+    else renderHome();
+}
+
+// ── 홈 ──
+function streakDays() {
+    const days = new Set(doneAnswers().map(a => dayKey(a.submittedAt || a.createdAt)));
+    let n = 0; const d = new Date();
+    if (!days.has(dayKey(d))) d.setDate(d.getDate() - 1);
+    while (days.has(dayKey(d))) { n++; d.setDate(d.getDate() - 1); }
+    return n;
+}
+function renderHome() {
+    $('breadcrumb').innerHTML = '<i class="fa-solid fa-house text-teal-600 mr-1.5"></i>홈';
+    $('headerActions').innerHTML = '';
+    const done = doneAnswers();
+    const weekAgo = Date.now() - 7 * 864e5;
+    const thisWeek = done.filter(a => (a.submittedAt || 0) >= weekAgo).length;
+    const scored = done.filter(a => a.ai && typeof a.ai.total === 'number');
+    const avg = scored.length ? Math.round(scored.reduce((s, a) => s + a.ai.total, 0) / scored.length) : null;
+    const totalChars = done.reduce((s, a) => s + countText(a.text).withSp, 0);
+    const drafts = state.answers.filter(a => a.status !== 'done' && topicById(a.topicId)).sort((x, y) => (y.updatedAt || 0) - (x.updatedAt || 0));
+    const recent = [...done].sort((x, y) => (y.submittedAt || 0) - (x.submittedAt || 0)).slice(0, 8);
+
+    // 최근 점수 추이 (최대 12개)
+    const trend = [...scored].sort((x, y) => (x.submittedAt || 0) - (y.submittedAt || 0)).slice(-12);
+    const trendSvg = trend.length >= 2 ? (() => {
+        const W = 320, H = 90, P = 8;
+        const pts = trend.map((a, i) => [P + i * (W - 2 * P) / (trend.length - 1), H - P - (a.ai.total / 100) * (H - 2 * P)]);
+        return `<svg viewBox="0 0 ${W} ${H}" class="w-full h-24">
+            ${[25, 50, 75].map(v => `<line x1="${P}" x2="${W - P}" y1="${H - P - v / 100 * (H - 2 * P)}" y2="${H - P - v / 100 * (H - 2 * P)}" stroke="#e2e8f0" stroke-dasharray="3 3"/>`).join('')}
+            <polyline fill="none" stroke="#0d9488" stroke-width="2.5" stroke-linejoin="round" points="${pts.map(p => p.join(',')).join(' ')}"/>
+            ${pts.map((p, i) => `<circle cx="${p[0]}" cy="${p[1]}" r="3.5" fill="#fff" stroke="#0d9488" stroke-width="2"><title>${escapeHtml(topicById(trend[i].topicId)?.title || '')}: ${trend[i].ai.total}점</title></circle>`).join('')}
+        </svg>`;
+    })() : `<div class="h-24 flex items-center justify-center text-xs text-slate-400 text-center">AI 첨삭을 2번 이상 받으면<br>점수 변화가 그래프로 보여요</div>`;
+
+    const stat = (label, val, sub, icon) => `<div class="bg-white rounded-2xl border border-slate-200 p-4"><div class="text-[11px] font-bold text-slate-400"><i class="${icon} mr-1"></i>${label}</div><div class="text-2xl font-extrabold text-slate-800 mt-1 tabular-nums">${val}</div><div class="text-[11px] text-slate-400">${sub}</div></div>`;
+    $('mainContent').innerHTML = `<div class="animate-fade-in space-y-5">
+        <div class="bg-gradient-to-br from-teal-700 to-slate-900 text-white rounded-2xl p-5 sm:p-6">
+            <div class="text-xs font-bold text-teal-200">오늘도 한 편</div>
+            <h1 class="text-xl sm:text-2xl font-extrabold mt-1">생각을 정리하고, 시간 안에 쓰고, 고쳐 쓰기</h1>
+            <p class="text-sm text-teal-100/80 mt-2">개요 → 답안 → 자기 점검 → AI 첨삭 → 다시 쓰기 순서로 연습해 보세요.</p>
+            <div class="flex flex-wrap gap-2 mt-4">
+                <button onclick="randomTopic()" class="bg-white text-slate-900 font-bold text-sm px-4 py-2 rounded-xl hover:bg-teal-50"><i class="fa-solid fa-shuffle mr-1"></i>아무 논제나 풀기</button>
+                <button onclick="editTopic(null)" class="bg-white/10 hover:bg-white/20 font-bold text-sm px-4 py-2 rounded-xl"><i class="fa-solid fa-plus mr-1"></i>새 논제 만들기</button>
+            </div>
+        </div>
+        ${drafts.length ? `<div class="bg-amber-50 border border-amber-200 rounded-2xl p-4">
+            <div class="text-xs font-extrabold text-amber-800 mb-2"><i class="fa-solid fa-pen mr-1"></i>쓰다 만 답안</div>
+            ${drafts.map(a => `<button onclick="resumeWriting('${a.id}')" class="w-full flex items-center gap-3 text-left bg-white rounded-xl px-3 py-2 mb-1.5 border border-amber-100 hover:border-amber-300">
+                <span class="flex-1 min-w-0 text-sm font-bold truncate">${escapeHtml(topicById(a.topicId).title)}</span>
+                <span class="text-[11px] text-slate-400">${countText(a.text).withSp}자 · ${fmtDateTime(a.updatedAt || a.createdAt)}</span>
+                <span class="text-xs font-bold text-amber-700">이어 쓰기 →</span></button>`).join('')}
+        </div>` : ''}
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            ${stat('제출한 답안', done.length, `이번 주 ${thisWeek}편`, 'fa-solid fa-file-lines')}
+            ${stat('연속 작성', streakDays() + '일', '하루 한 편씩', 'fa-solid fa-fire')}
+            ${stat('AI 평균 점수', avg ?? '-', `${scored.length}편 첨삭`, 'fa-solid fa-chart-line')}
+            ${stat('총 작성 분량', totalChars.toLocaleString(), '자 (공백 포함)', 'fa-solid fa-feather')}
+        </div>
+        <div class="grid sm:grid-cols-5 gap-4">
+            <div class="sm:col-span-2 bg-white rounded-2xl border border-slate-200 p-4">
+                <div class="text-xs font-extrabold text-slate-500 mb-2">AI 점수 변화</div>${trendSvg}
+            </div>
+            <div class="sm:col-span-3 bg-white rounded-2xl border border-slate-200 p-4">
+                <div class="text-xs font-extrabold text-slate-500 mb-2">최근 답안</div>
+                ${recent.length ? recent.map(a => answerRow(a, true)).join('') : '<div class="text-sm text-slate-400 py-6 text-center">아직 제출한 답안이 없어요.<br>왼쪽에서 논제를 골라 시작해 보세요.</div>'}
+            </div>
+        </div>
+    </div>`;
+}
+function answerRow(a, withTopic) {
+    const c = countText(a.text), t = topicById(a.topicId);
+    const sc = a.ai && typeof a.ai.total === 'number' ? `<span class="chip" style="background:${scoreColor(a.ai.total)}1a;color:${scoreColor(a.ai.total)}">${a.ai.total}점</span>` : '<span class="chip bg-slate-100 text-slate-400">미첨삭</span>';
+    const status = a.status === 'done' ? sc : '<span class="chip bg-amber-100 text-amber-700">쓰는 중</span>';
+    const click = a.status === 'done' ? `openAnswer('${a.id}')` : `resumeWriting('${a.id}')`;
+    return `<button onclick="${click}" class="w-full flex items-center gap-3 text-left px-2 py-2 rounded-lg hover:bg-slate-50 border-b border-slate-100 last:border-0">
+        <div class="flex-1 min-w-0">
+            <div class="text-sm font-bold text-slate-700 truncate">${withTopic ? escapeHtml(t?.title || '') : `${fmtDateTime(a.submittedAt || a.createdAt)}`}</div>
+            <div class="text-[11px] text-slate-400">${withTopic ? fmtDate(a.submittedAt || a.createdAt) + ' · ' : ''}${c.withSp}자 · ${fmtDur(a.duration)}${a.memo ? ' · 메모 있음' : ''}</div>
+        </div>${status}</button>`;
+}
+function randomTopic() {
+    if (!state.topics.length) { editTopic(null); return; }
+    const t = state.topics[Math.floor(Math.random() * state.topics.length)];
+    openTopic(t.id);
+}
+
+// ── 논제 화면 ──
+function conditionChips(t) {
+    const out = [];
+    if (t.minChars || t.maxChars) out.push(`<span class="chip bg-teal-50 text-teal-700"><i class="fa-solid fa-ruler-horizontal"></i>${t.minChars ? t.minChars : ''}${t.minChars && t.maxChars ? '~' : ''}${t.maxChars ? t.maxChars : ''}자${!t.maxChars ? ' 이상' : !t.minChars ? ' 이하' : ''}</span>`);
+    if (t.timeLimit) out.push(`<span class="chip bg-sky-50 text-sky-700"><i class="fa-regular fa-clock"></i>${t.timeLimit}분</span>`);
+    if (t.category) out.push(`<span class="chip bg-slate-100 text-slate-600">${escapeHtml(t.category)}</span>`);
+    return out.join(' ');
+}
+function promptHtml(t, compact) {
+    return `<div class="space-y-4">
+        ${!compact ? '' : `<div class="text-lg font-extrabold text-slate-800">${escapeHtml(t.title)}</div><div class="flex flex-wrap gap-1.5">${conditionChips(t)}</div>`}
+        ${t.passage ? `<div><div class="text-[11px] font-extrabold text-slate-400 mb-1.5">제시문</div><div class="passage serif text-[15px] text-slate-800 bg-slate-50 border border-slate-200 rounded-xl p-4">${escapeHtml(t.passage)}</div></div>` : ''}
+        <div><div class="text-[11px] font-extrabold text-slate-400 mb-1.5">문항</div><div class="text-[15px] font-bold text-slate-900 bg-teal-50 border-l-4 border-teal-500 rounded-r-xl p-4 leading-7 whitespace-pre-wrap">${escapeHtml(t.question || '(문항이 비어 있어요)')}</div></div>
+    </div>`;
+}
+function renderTopic() {
+    const t = topicById(ui.topicId);
+    $('breadcrumb').innerHTML = `<button onclick="goHome()" class="text-slate-400 hover:text-slate-600">홈</button> <span class="text-slate-300 mx-1">/</span> ${escapeHtml(t.title)}`;
+    $('headerActions').innerHTML = `
+        <button onclick="editTopic('${t.id}')" class="w-9 h-9 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600" title="수정"><i class="fa-solid fa-pen"></i></button>
+        <button onclick="deleteTopic('${t.id}')" class="w-9 h-9 rounded-lg bg-slate-100 hover:bg-rose-100 text-slate-600 hover:text-rose-600" title="삭제"><i class="fa-solid fa-trash"></i></button>`;
+    const ans = answersOf(t.id);
+    const draft = ans.find(a => a.status !== 'done');
+    $('mainContent').innerHTML = `<div class="animate-fade-in space-y-5">
+        <div class="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6">
+            <h1 class="text-xl font-extrabold text-slate-900">${escapeHtml(t.title)}</h1>
+            <div class="flex flex-wrap gap-1.5 mt-2 mb-5">${conditionChips(t)}</div>
+            ${promptHtml(t, false)}
+            <div class="flex flex-wrap gap-2 mt-5">
+                ${draft ? `<button onclick="resumeWriting('${draft.id}')" class="bg-amber-500 hover:bg-amber-400 text-white font-bold text-sm px-4 py-2.5 rounded-xl"><i class="fa-solid fa-pen mr-1"></i>쓰던 답안 이어 쓰기 (${countText(draft.text).withSp}자)</button>` : ''}
+                <button onclick="startWriting('${t.id}')" class="bg-teal-600 hover:bg-teal-500 text-white font-bold text-sm px-4 py-2.5 rounded-xl"><i class="fa-solid fa-feather-pointed mr-1"></i>${draft ? '새로 쓰기' : '답안 쓰기 시작'}</button>
+            </div>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5">
+            <div class="text-xs font-extrabold text-slate-500 mb-2">내 답안 ${ans.length ? `(${ans.length})` : ''}</div>
+            ${ans.length ? ans.map(a => answerRow(a, false)).join('') : '<div class="text-sm text-slate-400 py-5 text-center">아직 쓴 답안이 없어요.</div>'}
+        </div>
+    </div>`;
+}
+
+// ── 논제 편집 ──
+let editingTopicId = null;
+function editTopic(id) {
+    editingTopicId = id;
+    const t = id ? topicById(id) : {};
+    $('topicModalTitle').textContent = id ? '논제 수정' : '새 논제';
+    $('tTitle').value = t.title || ''; $('tCat').value = t.category || (id ? '' : ui.cat || '');
+    $('tPassage').value = t.passage || ''; $('tQuestion').value = t.question || '';
+    $('tMin').value = t.minChars || ''; $('tMax').value = t.maxChars || ''; $('tTime').value = t.timeLimit || '';
+    $('tGuide').value = t.guide || '';
+    $('catList').innerHTML = categories().map(c => `<option value="${escapeHtml(c)}">`).join('');
+    $('topicModal').classList.remove('hidden');
+    closeSidebar();
+    setTimeout(() => $('tTitle').focus(), 50);
+}
+function closeTopicModal() { $('topicModal').classList.add('hidden'); editingTopicId = null; if (pendingRemote) applyMerged(mergeStates(state, lastRemote || pendingRemote)); }
+async function saveTopicModal() {
+    const title = $('tTitle').value.trim(), question = $('tQuestion').value.trim();
+    if (!title && !question) { uiAlert('제목이나 문항을 입력해 주세요.'); return; }
+    let minC = parseInt($('tMin').value) || 0, maxC = parseInt($('tMax').value) || 0;
+    if (minC && maxC && minC > maxC) [minC, maxC] = [maxC, minC];
+    const data = { title: title || question.slice(0, 30), category: $('tCat').value.trim(), passage: $('tPassage').value.replace(/\s+$/, ''), question,
+        minChars: minC, maxChars: maxC, timeLimit: parseInt($('tTime').value) || 0, guide: $('tGuide').value.trim() };
+    let id = editingTopicId;
+    if (id) Object.assign(topicById(id), data);
+    else { id = uid(); state.topics.push({ id, createdAt: Date.now(), ...data }); }
+    save();
+    $('topicModal').classList.add('hidden'); editingTopicId = null;
+    openTopic(id);
+}
+async function deleteTopic(id) {
+    const t = topicById(id), n = answersOf(id).length;
+    if (!await uiConfirm(`'${t.title}' 논제를 지울까요?${n ? `\n이 논제의 답안 ${n}개도 함께 지워져요.` : ''}`, '지우기', 'danger')) return;
+    state.topics = state.topics.filter(x => x.id !== id);
+    state.answers = state.answers.filter(a => a.topicId !== id);
+    save(); goHome();
+}
+
+// ── 쓰기 ──
+function startWriting(topicId, base) {
+    const a = { id: uid(), topicId, status: 'draft', createdAt: Date.now(), updatedAt: Date.now(), text: base?.text || '', outline: base?.outline || '', duration: 0, check: [], memo: '', fromId: base?.id || null };
+    state.answers.push(a); save();
+    openWriting(a.id);
+}
+function resumeWriting(id) { openWriting(id); }
+async function rewriteFrom(id) {
+    const a = answerById(id);
+    const mode = await uiDialog('어떻게 다시 쓸까요?', [
+        { label: '이 답안을 불러와서 고쳐 쓰기', value: 'edit', style: 'primary' },
+        { label: '빈 종이에 처음부터 다시 쓰기 (개요만 가져옴)', value: 'fresh' },
+        { label: '취소', value: null }]);
+    if (!mode) return;
+    startWriting(a.topicId, mode === 'edit' ? a : { outline: a.outline, id: a.id });
+}
+function curWriting() { return writing && answerById(writing.answerId); }
+function openWriting(id) {
+    const a = answerById(id), t = a && topicById(a.topicId);
+    if (!t) return;
+    writing = { answerId: id, startTick: Date.now(), base: a.duration || 0, running: true };
+    $('wTitle').textContent = t.title;
+    $('wPromptBody').innerHTML = promptHtml(t, true);
+    $('essayInput').value = a.text; $('outlineInput').value = a.outline;
+    $('writeOverlay').classList.remove('hidden');
+    showPromptMobile(false);
+    setWTab(ui.wTab === 'outline' && !(a.text && !a.outline) ? 'outline' : 'essay');
+    updateCounter(); updateTimer();
+    clearInterval(timerInt); timerInt = setInterval(updateTimer, 500);
+    $('wSaved').textContent = a.updatedAt ? `저장됨 ${fmtDateTime(a.updatedAt).slice(11)}` : '자동 저장';
+}
+function elapsed() { if (!writing) return 0; return writing.base + (writing.running ? (Date.now() - writing.startTick) / 1000 : 0); }
+function toggleTimer() {
+    if (!writing) return;
+    if (writing.running) { writing.base = elapsed(); writing.running = false; }
+    else { writing.startTick = Date.now(); writing.running = true; }
+    updateTimer();
+}
+function updateTimer() {
+    if (!writing) return;
+    const a = curWriting(); const t = a && topicById(a.topicId); if (!t) return;
+    const el = elapsed(), btn = $('timerBtn');
+    let label, cls;
+    if (t.timeLimit) {
+        const left = t.timeLimit * 60 - el;
+        label = clock(left); cls = left < 0 ? 'bg-rose-600' : left < 300 ? 'bg-amber-500' : 'bg-slate-900';
+        if (left < 0) label = '초과 ' + clock(-left).replace('+', '');
+    } else { label = clock(el); cls = 'bg-slate-900'; }
+    btn.textContent = (writing.running ? '' : '⏸ ') + label;
+    btn.className = `font-mono font-extrabold text-sm sm:text-base px-3 py-1.5 rounded-lg text-white tabular-nums ${writing.running ? cls : 'bg-slate-400'}`;
+}
+let draftTimer = null;
+function onWritingInput() {
+    const a = curWriting(); if (!a) return;
+    a.text = $('essayInput').value; a.outline = $('outlineInput').value;
+    updateCounter();
+    if (ui.wTab === 'grid') renderGrid();
+    $('wSaved').textContent = '입력 중...';
+    clearTimeout(draftTimer);
+    draftTimer = setTimeout(persistDraft, 1200);
+}
+function persistDraft() {
+    const a = curWriting(); if (!a) return;
+    a.duration = Math.round(elapsed()); a.updatedAt = Date.now();
+    save();
+    $('wSaved').textContent = `저장됨 ${fmtDateTime(a.updatedAt).slice(11)}`;
+}
+$('essayInput').addEventListener('input', onWritingInput);
+$('outlineInput').addEventListener('input', onWritingInput);
+// 탭 키를 눌러도 포커스가 다른 곳으로 넘어가지 않게
+$('essayInput').addEventListener('keydown', e => { if (e.key === 'Tab') { e.preventDefault(); } });
+
+function updateCounter() {
+    const a = curWriting(); if (!a) return;
+    const t = topicById(a.topicId), c = countText($('essayInput').value);
+    $('cWith').textContent = c.withSp.toLocaleString(); $('cWithout').textContent = c.without.toLocaleString();
+    $('cPara').textContent = c.paras; $('cSent').textContent = c.sents;
+    const min = t.minChars || 0, max = t.maxChars || 0, goal = max || min;
+    const bar = $('cBar'), range = $('cRange'), mark = $('cMinMark');
+    if (goal) {
+        bar.style.width = Math.min(100, c.withSp / goal * 100) + '%';
+        const over = max && c.withSp > max, under = min && c.withSp < min;
+        bar.className = 'h-full rounded-full transition-all ' + (over ? 'bg-rose-500' : under ? 'bg-amber-400' : 'bg-teal-500');
+        range.textContent = over ? `${c.withSp - max}자 초과` : under ? `${min - c.withSp}자 더` : '분량 OK';
+        range.className = 'ml-auto font-bold ' + (over ? 'text-rose-600' : under ? 'text-amber-600' : 'text-teal-600');
+        if (min && max) { mark.classList.remove('hidden'); mark.style.left = (min / max * 100) + '%'; } else mark.classList.add('hidden');
+    } else { bar.style.width = '0'; range.textContent = ''; mark.classList.add('hidden'); }
+}
+function setWTab(tab) {
+    ui.wTab = tab; saveUI();
+    document.querySelectorAll('#wTabs button').forEach(b => b.className = 'px-3 py-1.5 ' + (b.dataset.tab !== 'outline' ? 'border-l border-slate-200 ' : '') + (b.dataset.tab === tab ? 'tab-on' : 'tab-off'));
+    $('outlineInput').classList.toggle('hidden', tab !== 'outline');
+    $('essayInput').classList.toggle('hidden', tab !== 'essay');
+    $('gridView').classList.toggle('hidden', tab !== 'grid');
+    $('tplBtn').classList.toggle('hidden', tab !== 'outline');
+    if (tab === 'grid') renderGrid();
+    else setTimeout(() => (tab === 'outline' ? $('outlineInput') : $('essayInput')).focus(), 30);
+}
+$('wTabs').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setWTab(b.dataset.tab); });
+function showPromptMobile(show) { $('writePrompt').classList.toggle('mhide', !show); }
+function insertOutlineTemplate() {
+    const el = $('outlineInput');
+    const tpl = '■ 논제 분석: 무엇을 하라는가? (요약 / 비교 / 평가 / 견해)\n- \n\n■ 제시문 요지\n- [가] \n- [나] \n\n■ 내 주장 (한 문장)\n- \n\n■ 서론 (문제 제기 + 입장)\n- \n\n■ 본론 1 (근거 + 제시문 활용)\n- \n\n■ 본론 2 (근거 + 예시)\n- \n\n■ 예상 반론 → 재반박\n- \n\n■ 결론 (요약 + 의의/대안)\n- ';
+    el.value = el.value.trim() ? el.value.replace(/\s+$/, '') + '\n\n' + tpl : tpl;
+    onWritingInput(); el.focus();
+}
+function closeWriting() {
+    if (!writing) return;
+    const a = curWriting();
+    // 아무것도 안 쓰고 나가면 빈 답안은 남기지 않음
+    if (a && !$('essayInput').value.trim() && !$('outlineInput').value.trim()) { state.answers = state.answers.filter(x => x.id !== a.id); save(); }
+    else persistDraft();
+    clearInterval(timerInt); writing = null;
+    $('writeOverlay').classList.add('hidden');
+    if (pendingRemote) applyMerged(mergeStates(state, lastRemote || pendingRemote)); else render();
+}
+async function submitWriting() {
+    const a = curWriting(); if (!a) return;
+    const t = topicById(a.topicId), c = countText($('essayInput').value);
+    if (!c.withSp) { uiAlert('답안이 비어 있어요.'); return; }
+    const warn = [];
+    if (t.minChars && c.withSp < t.minChars) warn.push(`최소 분량보다 ${t.minChars - c.withSp}자 적어요.`);
+    if (t.maxChars && c.withSp > t.maxChars) warn.push(`최대 분량보다 ${c.withSp - t.maxChars}자 많아요.`);
+    if (!await uiConfirm((warn.length ? warn.join('\n') + '\n\n' : '') + '답안을 제출할까요? 제출 뒤에도 고쳐 쓰기로 다시 쓸 수 있어요.', '제출하기')) return;
+    if (!curWriting() || curWriting() !== a) return;
+    a.text = $('essayInput').value; a.outline = $('outlineInput').value;
+    a.duration = Math.round(elapsed()); a.status = 'done'; a.submittedAt = Date.now(); a.updatedAt = Date.now();
+    save();
+    clearInterval(timerInt); writing = null;
+    $('writeOverlay').classList.add('hidden');
+    if (pendingRemote) { state = mergeStates(state, lastRemote || pendingRemote); pendingRemote = null; resetSnap(); saveLocalOnly(); }
+    openAnswer(a.id);
+}
+window.addEventListener('beforeunload', () => { if (writing) persistDraft(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden && writing) persistDraft(); });
+
+// ── 원고지 ──
+// 한 칸에 한 글자, 문단 첫 칸 비우기, 영문 소문자·숫자는 두 글자씩 한 칸, 줄 첫 칸의 띄어쓰기는 생략
+function gridCells(text) {
+    const cells = [];
+    const COLS = 20;
+    const paras = (text || '').replace(/\r/g, '').split('\n');
+    paras.forEach((p, pi) => {
+        p = p.replace(/\s+$/, '');
+        if (!p.trim()) return;
+        if (cells.length % COLS) while (cells.length % COLS) cells.push({ ch: '' });
+        cells.push({ ch: '' }); // 들여쓰기
+        const chars = [...p.replace(/^\s+/, '')];
+        for (let i = 0; i < chars.length; i++) {
+            const ch = chars[i];
+            if (/\s/.test(ch)) {
+                if (cells.length % COLS === 0) continue;
+                cells.push({ ch: '' }); continue;
+            }
+            if (/[a-z0-9]/.test(ch) && chars[i + 1] && /[a-z0-9]/.test(chars[i + 1])) { cells.push({ ch: ch + chars[i + 1], pair: true }); i++; continue; }
+            // 문장 부호가 줄 첫 칸에 오면 앞 줄 끝 칸에 같이 씀
+            if (/[.,!?)」』’”]/.test(ch) && cells.length % COLS === 0 && cells.length) { const last = cells[cells.length - 1]; last.ch += ch; last.pair = true; continue; }
+            cells.push({ ch });
+        }
+    });
+    return cells;
+}
+function gridHtml(text, maxChars) {
+    const cells = gridCells(text);
+    const COLS = 20;
+    const minRows = Math.max(10, Math.ceil(((maxChars || 0) * 1.1) / COLS));
+    const total = Math.max(Math.ceil(cells.length / COLS) + 2, minRows) * COLS;
+    let html = '';
+    for (let i = 0; i < total; i++) {
+        if (i && i % COLS === 0) html += '<div class="row-gap"></div>';
+        const c = cells[i] || { ch: '' };
+        const cls = ['c']; if (c.pair) cls.push('pair'); if (maxChars && i >= maxChars) cls.push('over');
+        if ((i + 1) % 100 === 0) cls.push('mark');
+        html += `<div class="${cls.join(' ')}">${escapeHtml(c.ch)}</div>`;
+    }
+    return { html: `<div class="wgj mx-auto">${html}</div>`, used: cells.length };
+}
+function renderGrid() {
+    const a = curWriting(); if (!a) return;
+    const t = topicById(a.topicId);
+    const g = gridHtml($('essayInput').value, t.maxChars);
+    $('gridView').innerHTML = `<div class="text-[11px] text-slate-500 mb-2 flex flex-wrap gap-x-3 justify-center">
+        <span>원고지 기준 <b class="text-slate-800">${g.used}</b>칸 사용 (${(g.used / 200).toFixed(1)}매, 200자 원고지)</span>
+        <span>· 100칸마다 <span class="inline-block w-2.5 h-2.5 bg-teal-100 border border-teal-300 align-middle"></span></span>
+        ${t.maxChars ? `<span>· 최대 분량 넘는 칸 <span class="inline-block w-2.5 h-2.5 bg-rose-50 border border-rose-200 align-middle"></span></span>` : ''}
+    </div>${g.html}<p class="text-[11px] text-slate-400 text-center mt-3">원고지는 보기 전용이에요. 고치려면 '답안' 탭에서 쓰세요.</p>`;
+}
+
+// ── 답안 상세 ──
+function renderAnswer() {
+    const a = answerById(ui.answerId), t = topicById(a.topicId);
+    const c = countText(a.text);
+    const siblings = answersOf(t.id).filter(x => x.status === 'done');
+    const idx = siblings.length - siblings.findIndex(x => x.id === a.id);
+    $('breadcrumb').innerHTML = `<button onclick="goHome()" class="text-slate-400 hover:text-slate-600">홈</button> <span class="text-slate-300 mx-1">/</span> <button onclick="openTopic('${t.id}')" class="text-slate-400 hover:text-slate-600">${escapeHtml(t.title)}</button> <span class="text-slate-300 mx-1">/</span> ${idx}번째 답안`;
+    $('headerActions').innerHTML = `
+        <button onclick="window.print()" class="w-9 h-9 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600" title="인쇄"><i class="fa-solid fa-print"></i></button>
+        <button onclick="deleteAnswer('${a.id}')" class="w-9 h-9 rounded-lg bg-slate-100 hover:bg-rose-100 text-slate-600 hover:text-rose-600" title="답안 삭제"><i class="fa-solid fa-trash"></i></button>`;
+    const condOk = [];
+    if (t.minChars || t.maxChars) {
+        const ok = (!t.minChars || c.withSp >= t.minChars) && (!t.maxChars || c.withSp <= t.maxChars);
+        condOk.push(`<span class="chip ${ok ? 'bg-teal-50 text-teal-700' : 'bg-rose-50 text-rose-600'}"><i class="fa-solid ${ok ? 'fa-check' : 'fa-triangle-exclamation'}"></i>분량 ${ok ? '충족' : '미충족'}</span>`);
+    }
+    if (t.timeLimit) {
+        const ok = a.duration <= t.timeLimit * 60;
+        condOk.push(`<span class="chip ${ok ? 'bg-teal-50 text-teal-700' : 'bg-rose-50 text-rose-600'}"><i class="fa-regular fa-clock"></i>${ok ? '시간 안에 완성' : `시간 ${fmtDur(a.duration - t.timeLimit * 60)} 초과`}</span>`);
+    }
+    const prev = a.fromId && answerById(a.fromId);
+    $('mainContent').innerHTML = `<div class="animate-fade-in space-y-5">
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            ${[['공백 포함', c.withSp + '자'], ['공백 제외', c.without + '자'], ['문단 / 문장', `${c.paras} / ${c.sents}`], ['걸린 시간', fmtDur(a.duration)]].map(([l, v]) =>
+                `<div class="bg-white rounded-xl border border-slate-200 px-4 py-3"><div class="text-[11px] font-bold text-slate-400">${l}</div><div class="text-lg font-extrabold text-slate-800 tabular-nums">${v}</div></div>`).join('')}
+        </div>
+        <div class="flex flex-wrap gap-1.5 items-center">${condOk.join(' ')} <span class="text-[11px] text-slate-400 ml-1">${fmtDateTime(a.submittedAt)} 제출</span></div>
+
+        <details class="bg-white rounded-2xl border border-slate-200 p-4 group no-print">
+            <summary class="cursor-pointer text-sm font-extrabold text-slate-600 list-none flex items-center"><i class="fa-solid fa-chevron-right text-xs mr-2 group-open:rotate-90 transition"></i>문제 다시 보기</summary>
+            <div class="mt-4">${promptHtml(t, false)}</div>
+        </details>
+
+        <div class="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6">
+            <div class="flex items-center mb-3">
+                <div class="text-xs font-extrabold text-slate-500 flex-1">내 답안</div>
+                <div class="flex rounded-lg overflow-hidden border border-slate-200 text-[11px] font-bold no-print" id="ansView">
+                    <button data-v="text" class="px-2.5 py-1 tab-on">글</button>
+                    <button data-v="grid" class="px-2.5 py-1 border-l border-slate-200 tab-off">원고지</button>
+                    ${prev ? '<button data-v="diff" class="px-2.5 py-1 border-l border-slate-200 tab-off">이전과 비교</button>' : ''}
+                </div>
+            </div>
+            <div id="ansBody" class="answer-text serif text-[15.5px] text-slate-800">${escapeHtml(a.text)}</div>
+            ${a.outline.trim() ? `<details class="mt-5 border-t border-slate-100 pt-3"><summary class="cursor-pointer text-xs font-bold text-slate-400">개요 보기</summary><div class="answer-text text-sm text-slate-600 mt-2 bg-slate-50 rounded-lg p-3">${escapeHtml(a.outline)}</div></details>` : ''}
+        </div>
+
+        <div class="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 no-print">
+            <div class="text-xs font-extrabold text-slate-500 mb-3"><i class="fa-solid fa-list-check text-teal-600 mr-1"></i>스스로 점검하기 <span class="font-normal text-slate-400">(${a.check.filter(Boolean).length}/${SELF_CHECK.length})</span></div>
+            <div class="grid sm:grid-cols-2 gap-1.5">
+                ${SELF_CHECK.map((s, i) => `<label class="flex items-start gap-2 text-sm text-slate-700 cursor-pointer px-2 py-1.5 rounded-lg hover:bg-slate-50">
+                    <input type="checkbox" ${a.check[i] ? 'checked' : ''} onchange="toggleCheck('${a.id}',${i},this.checked)" class="mt-1 accent-teal-600"> <span>${s}</span></label>`).join('')}
+            </div>
+            <label class="block mt-3"><span class="text-[11px] font-bold text-slate-400">다음에 고칠 점 메모</span>
+                <textarea id="memoInput" rows="2" class="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-teal-500" placeholder="예) 서론이 너무 길었다. 반론을 꼭 넣자.">${escapeHtml(a.memo)}</textarea></label>
+        </div>
+
+        <div id="aiSection">${aiResultHtml(a)}</div>
+
+        <div class="flex flex-wrap gap-2 no-print">
+            <button onclick="rewriteFrom('${a.id}')" class="bg-teal-600 hover:bg-teal-500 text-white font-bold text-sm px-4 py-2.5 rounded-xl"><i class="fa-solid fa-rotate mr-1"></i>고쳐 쓰기</button>
+            <button onclick="openTopic('${t.id}')" class="bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-sm px-4 py-2.5 rounded-xl">논제로 돌아가기</button>
+        </div>
+    </div>`;
+    $('memoInput').addEventListener('input', e => { a.memo = e.target.value; clearTimeout(window._memoT); window._memoT = setTimeout(save, 800); });
+    $('memoInput').addEventListener('blur', () => { clearTimeout(window._memoT); save(); });
+    $('ansView').addEventListener('click', e => {
+        const b = e.target.closest('button'); if (!b) return;
+        document.querySelectorAll('#ansView button').forEach(x => { x.classList.toggle('tab-on', x === b); x.classList.toggle('tab-off', x !== b); });
+        const body = $('ansBody');
+        if (b.dataset.v === 'grid') { body.className = ''; body.innerHTML = gridHtml(a.text, t.maxChars).html; }
+        else if (b.dataset.v === 'diff') { body.className = 'answer-text serif text-[15.5px] text-slate-800'; body.innerHTML = `<div class="text-[11px] text-slate-400 mb-2 font-sans"><span class="diff-old px-1">지운 부분</span> <span class="diff-new px-1">새로 쓴 부분</span> — ${fmtDateTime(prev.submittedAt || prev.createdAt)} 답안과 비교</div>` + diffHtml(prev.text, a.text); }
+        else { body.className = 'answer-text serif text-[15.5px] text-slate-800'; body.innerHTML = escapeHtml(a.text); }
+    });
+}
+function toggleCheck(id, i, v) { const a = answerById(id); a.check[i] = v; for (let k = 0; k < SELF_CHECK.length; k++) a.check[k] = !!a.check[k]; save(); }
+async function deleteAnswer(id) {
+    if (!await uiConfirm('이 답안을 지울까요?', '지우기', 'danger')) return;
+    const a = answerById(id);
+    state.answers = state.answers.filter(x => x.id !== id); save();
+    openTopic(a.topicId);
+}
+
+// 어절 단위 비교 (LCS)
+function diffHtml(oldT, newT) {
+    const tok = s => (s || '').match(/\s+|[^\s]+/g) || [];
+    const A = tok(oldT), B = tok(newT);
+    if (A.length * B.length > 4e6) return escapeHtml(newT);
+    const n = A.length, m = B.length;
+    const dp = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
+    for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) dp[i][j] = A[i] === B[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    // 같은 부분('='), 지운 부분('-'), 새로 쓴 부분('+')으로 나눈 뒤 바뀐 구간을 묶어서 보여 줌
+    const ops = []; let i = 0, j = 0;
+    while (i < n && j < m) {
+        if (A[i] === B[j]) { ops.push(['=', A[i]]); i++; j++; }
+        else if (dp[i + 1][j] >= dp[i][j + 1]) ops.push(['-', A[i++]]);
+        else ops.push(['+', B[j++]]);
+    }
+    while (i < n) ops.push(['-', A[i++]]);
+    while (j < m) ops.push(['+', B[j++]]);
+    let out = '', del = '', add = '';
+    const flush = () => {
+        if (del.trim()) out += `<span class="diff-old">${escapeHtml(del.trim())}</span>`;
+        if (del.trim() && add.trim()) out += ' ';
+        if (add.trim()) out += `<span class="diff-new">${escapeHtml(add.trim())}</span>`;
+        if ((del + add).trim() && /\s$/.test(add || del)) out += ' ';
+        del = ''; add = '';
+    };
+    for (const [t, s] of ops) {
+        if (t === '=') { if (/^\s+$/.test(s) && (del || add)) { del += s; add += s; continue; } flush(); out += escapeHtml(s); }
+        else if (t === '-') del += s; else add += s;
+    }
+    flush();
+    return out;
+}
+
+// ── AI 첨삭 ──
+function aiResultHtml(a) {
+    if (!a.ai) return `<div class="bg-gradient-to-br from-teal-50 to-sky-50 border border-teal-100 rounded-2xl p-5 sm:p-6 flex flex-col sm:flex-row items-start sm:items-center gap-3 no-print">
+        <div class="flex-1"><div class="font-extrabold text-slate-800"><i class="fa-solid fa-wand-magic-sparkles text-teal-500 mr-1"></i>AI 첨삭</div>
+        <p class="text-sm text-slate-600 mt-1">${CRITERIA.join(' · ')} 기준으로 점수와 고칠 문장, 모범 개요를 받아요.</p></div>
+        <button onclick="openAiModal()" class="bg-teal-600 hover:bg-teal-500 text-white font-bold text-sm px-4 py-2.5 rounded-xl shrink-0">첨삭 받기</button></div>`;
+    const r = a.ai, total = Math.max(0, Math.min(100, Math.round(r.total || 0))), col = scoreColor(total);
+    const list = (arr, icon, color) => (arr || []).map(s => `<li class="flex gap-2"><i class="${icon} ${color} mt-1 text-xs"></i><span>${escapeHtml(s)}</span></li>`).join('');
+    return `<div class="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 space-y-5">
+        <div class="flex items-center gap-4">
+            <div class="score-ring shrink-0" style="background:conic-gradient(${col} ${total * 3.6}deg,#e2e8f0 0)"><div class="w-[68px] h-[68px] rounded-full bg-white flex flex-col items-center justify-center"><span class="text-2xl font-extrabold tabular-nums" style="color:${col}">${total}</span><span class="text-[10px] text-slate-400 -mt-1">/ 100</span></div></div>
+            <div class="flex-1 min-w-0">
+                <div class="text-xs font-extrabold text-slate-500"><i class="fa-solid fa-wand-magic-sparkles text-teal-500 mr-1"></i>AI 첨삭 결과 <span class="font-normal text-slate-400">${r.at ? fmtDateTime(r.at) : ''}</span></div>
+                <p class="text-sm text-slate-700 mt-1 leading-6">${escapeHtml(r.summary || '')}</p>
+            </div>
+        </div>
+        <div class="space-y-2">
+            ${(r.scores || []).map(s => { const v = Math.max(0, Math.min(20, +s.score || 0)); return `<div>
+                <div class="flex items-center text-sm"><span class="font-bold text-slate-700 flex-1">${escapeHtml(s.name)}</span><span class="font-extrabold tabular-nums" style="color:${scoreColor(v * 5)}">${v}<span class="text-slate-400 font-normal text-xs">/20</span></span></div>
+                <div class="h-1.5 bg-slate-100 rounded-full mt-1"><div class="h-full rounded-full" style="width:${v * 5}%;background:${scoreColor(v * 5)}"></div></div>
+                ${s.comment ? `<div class="text-xs text-slate-500 mt-1">${escapeHtml(s.comment)}</div>` : ''}</div>`; }).join('')}
+        </div>
+        <div class="grid sm:grid-cols-2 gap-4">
+            <div class="bg-teal-50/60 rounded-xl p-4"><div class="text-xs font-extrabold text-teal-700 mb-2">잘한 점</div><ul class="space-y-1.5 text-sm text-slate-700">${list(r.strengths, 'fa-solid fa-thumbs-up', 'text-teal-500')}</ul></div>
+            <div class="bg-amber-50/60 rounded-xl p-4"><div class="text-xs font-extrabold text-amber-700 mb-2">고칠 점</div><ul class="space-y-1.5 text-sm text-slate-700">${list(r.improvements, 'fa-solid fa-arrow-up-right-dots', 'text-amber-500')}</ul></div>
+        </div>
+        ${(r.corrections || []).length ? `<div><div class="text-xs font-extrabold text-slate-500 mb-2">문장 첨삭</div><div class="space-y-2">
+            ${r.corrections.map(c => `<div class="border border-slate-200 rounded-xl p-3 text-sm">
+                <div class="diff-old rounded px-2 py-1 serif">${escapeHtml(c.original)}</div>
+                <div class="diff-new rounded px-2 py-1 mt-1 serif">${escapeHtml(c.revised)}</div>
+                ${c.reason ? `<div class="text-xs text-slate-500 mt-1.5"><i class="fa-regular fa-lightbulb mr-1"></i>${escapeHtml(c.reason)}</div>` : ''}</div>`).join('')}
+        </div></div>` : ''}
+        ${r.modelOutline ? `<div><div class="text-xs font-extrabold text-slate-500 mb-2">모범 개요</div><div class="answer-text text-sm text-slate-700 bg-slate-50 border border-slate-200 rounded-xl p-4">${escapeHtml(r.modelOutline)}</div></div>` : ''}
+        <div class="no-print"><button onclick="openAiModal()" class="text-xs font-bold text-slate-500 hover:text-teal-600"><i class="fa-solid fa-rotate-right mr-1"></i>다시 첨삭 받기</button></div>
+    </div>`;
+}
+function getAiKey() { try { return localStorage.getItem('gemini_api_key') || ''; } catch (e) { return ''; } }
+function saveAiKey() { const v = $('aiKeyInput').value.trim(); if (!v) return; try { localStorage.setItem('gemini_api_key', v); } catch (e) {} syncAiKeyUI(); }
+function resetAiKey() { $('aiKeyInput').value = getAiKey(); $('aiKeyBox').classList.remove('hidden'); $('aiKeySaved').classList.add('hidden'); }
+function syncAiKeyUI() { const has = !!getAiKey(); $('aiKeyBox').classList.toggle('hidden', has); $('aiKeySaved').classList.toggle('hidden', !has); }
+let aiTab = 'direct';
+function setAiTab(t) {
+    aiTab = t;
+    document.querySelectorAll('#aiTabs button').forEach(b => { b.classList.toggle('tab-on', b.dataset.tab === t); b.classList.toggle('tab-off', b.dataset.tab !== t); });
+    $('aiTabDirect').classList.toggle('hidden', t !== 'direct');
+    $('aiTabPaste').classList.toggle('hidden', t !== 'paste');
+}
+$('aiTabs').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setAiTab(b.dataset.tab); });
+function openAiModal() { syncAiKeyUI(); setAiTab(aiTab); $('aiStatus').classList.add('hidden'); $('aiPasteText').value = ''; $('aiRunBtn').disabled = false; $('aiModal').classList.remove('hidden'); }
+function closeAiModal() { $('aiModal').classList.add('hidden'); }
+
+function buildAiPrompt(a) {
+    const t = topicById(a.topicId), c = countText(a.text);
+    const cond = [t.minChars || t.maxChars ? `분량: ${t.minChars || 0}~${t.maxChars || '제한 없음'}자 (공백 포함). 실제 ${c.withSp}자.` : '', t.timeLimit ? `제한 시간 ${t.timeLimit}분, 실제 ${Math.round(a.duration / 60)}분.` : ''].filter(Boolean).join(' ');
+    return `당신은 한국 대학 논술·법학 글쓰기를 지도하는 엄격하지만 친절한 첨삭 선생님입니다. 아래 학생 답안을 평가하세요.
+
+[논제 제목] ${t.title}
+[제시문]
+${t.passage || '(없음)'}
+[문항]
+${t.question}
+${cond ? `[조건] ${cond}\n` : ''}${t.guide ? `[출제자 채점 포인트]\n${t.guide}\n` : ''}${a.outline.trim() ? `[학생 개요]\n${a.outline}\n` : ''}
+[학생 답안]
+${a.text}
+
+평가 기준 5개(각 20점, 총 100점): ${CRITERIA.join(', ')}.
+- 논제 이해: 문항이 요구한 과제를 빠짐없이 정확하게 수행했는가
+- 논리 구성: 서론-본론-결론 흐름, 문단 구성, 주장과 근거의 연결
+- 근거의 타당성: 근거가 구체적이고 설득력 있는가, 반론 고려
+- 제시문 활용: 제시문을 정확히 이해하고 자기 말로 활용했는가
+- 표현과 분량: 문장 정확성, 맞춤법, 어휘, 분량 조건 준수
+점수는 후하게 주지 말고 실제 입시 기준으로 매기세요.
+
+반드시 아래 JSON 형식으로만 답하세요 (설명 문장 금지, 모든 내용은 한국어):
+{
+  "total": 0~100 정수 (scores 합),
+  "summary": "총평 2~3문장",
+  "scores": [{"name": "논제 이해", "score": 0~20 정수, "comment": "한두 문장"}, ... 5개 기준 순서대로],
+  "strengths": ["잘한 점", ...2~4개],
+  "improvements": ["구체적으로 고칠 점", ...2~5개],
+  "corrections": [{"original": "답안의 원래 문장을 그대로", "revised": "고친 문장", "reason": "고친 이유"}, ...3~6개],
+  "modelOutline": "이 논제의 모범 개요 (서론/본론/결론, 줄바꿈 사용)"
+}`;
+}
+function parseAiJson(text) {
+    let s = String(text || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
+    const st = s.indexOf('{'), en = s.lastIndexOf('}');
+    if (st < 0 || en < st) throw new Error('JSON을 찾을 수 없어요.');
+    const r = JSON.parse(s.slice(st, en + 1));
+    const scores = Array.isArray(r.scores) ? r.scores.map(x => ({ name: String(x.name || ''), score: Math.round(+x.score || 0), comment: String(x.comment || '') })) : [];
+    let total = Math.round(+r.total);
+    if (!Number.isFinite(total)) total = scores.reduce((s, x) => s + x.score, 0);
+    const arr = v => Array.isArray(v) ? v.map(String).filter(Boolean) : (v ? [String(v)] : []);
+    return {
+        total, summary: String(r.summary || ''), scores, strengths: arr(r.strengths), improvements: arr(r.improvements),
+        corrections: Array.isArray(r.corrections) ? r.corrections.filter(c => c && (c.original || c.revised)).map(c => ({ original: String(c.original || ''), revised: String(c.revised || ''), reason: String(c.reason || '') })) : [],
+        modelOutline: String(r.modelOutline || ''), at: Date.now()
+    };
+}
+function storeAi(result) {
+    const a = answerById(ui.answerId); if (!a) return;
+    a.ai = result; save();
+    closeAiModal(); renderAnswer(); renderSidebar();
+    setTimeout(() => $('aiSection')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+}
+async function runAiReview() {
+    const key = getAiKey(); if (!key) { uiAlert('먼저 Gemini API 키를 저장해 주세요.'); return; }
+    const a = answerById(ui.answerId); if (!a) return;
+    const btn = $('aiRunBtn'), st = $('aiStatus');
+    btn.disabled = true; st.classList.remove('hidden'); st.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i>답안을 읽고 첨삭하는 중이에요... (20~40초)';
+    try {
+        let lastErr;
+        for (const model of GEMINI_MODELS) {
+            const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ contents: [{ parts: [{ text: buildAiPrompt(a) }] }], generationConfig: { temperature: 0.3, responseMimeType: 'application/json', maxOutputTokens: 16384 } })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (res.ok) { storeAi(parseAiJson((data.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join(''))); return; }
+            lastErr = new Error(data.error?.message || `HTTP ${res.status}`);
+            if (res.status !== 404) break;
+        }
+        throw lastErr;
+    } catch (e) {
+        st.innerHTML = `<span class="text-rose-600"><i class="fa-solid fa-triangle-exclamation mr-1"></i>첨삭에 실패했어요: ${escapeHtml(e.message)}</span><br><span class="text-slate-400">키가 맞는지 확인하거나 '다른 AI 사용' 탭을 이용해 보세요.</span>`;
+        btn.disabled = false;
+    }
+}
+async function copyAiPrompt() {
+    const a = answerById(ui.answerId); if (!a) return;
+    const text = buildAiPrompt(a);
+    try { await navigator.clipboard.writeText(text); toast('요청문을 복사했어요'); }
+    catch (e) { $('aiPasteText').value = text; $('aiPasteText').select(); uiAlert('자동 복사가 안 돼서 아래 칸에 넣었어요. 직접 복사한 뒤 칸을 비우고 결과를 붙여넣어 주세요.'); }
+}
+function applyPastedAi() {
+    try { storeAi(parseAiJson($('aiPasteText').value)); }
+    catch (e) { uiAlert('결과를 읽지 못했어요. AI가 준 JSON 전체를 붙여넣었는지 확인해 주세요.\n(' + e.message + ')'); }
+}
+
+// ── 백업 ──
+function exportJSON() {
+    const d = new Date(); const ds = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `논술연습_백업_${ds}.json`; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+function importJSON(e) {
+    const file = e.target.files[0]; e.target.value = ''; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async () => {
+        try {
+            const data = normalize(JSON.parse(reader.result));
+            if (!await uiConfirm(`백업을 불러올까요?\n논제 ${data.topics.length}개, 답안 ${data.answers.length}개\n현재 데이터는 백업 내용으로 바뀝니다.`, '불러오기')) return;
+            const keep = new Set(allItems(data).map(x => x.id));
+            const now = Date.now();
+            for (const id of snap.keys()) if (!keep.has(id)) data.deleted[id] = now;
+            for (const id of keep) delete data.deleted[id];
+            state = data; snap = new Map();
+            save(); goHome();
+        } catch (err) { uiAlert('백업 파일을 읽지 못했어요.'); }
+    };
+    reader.readAsText(file);
+}
+
+// ── 단축키 ──
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+        if (dlgResolve) dlgResolve(null);
+        else if (!$('aiModal').classList.contains('hidden')) closeAiModal();
+        else if (!$('topicModal').classList.contains('hidden')) closeTopicModal();
+        else if (writing && !$('writePrompt').classList.contains('mhide') && window.innerWidth < 900) showPromptMobile(false);
+    }
+    if (writing && (e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); persistDraft(); }
+});
+
+loadLocal();
+render();
+</script>
+</body>
+</html>
