@@ -52,8 +52,15 @@
                   font-size: clamp(10px, 2.6vw, 17px); font-family: 'Batang', 'Nanum Myeongjo', 'Noto Serif KR', serif; color: #0f172a; overflow: hidden; white-space: nowrap; letter-spacing: -0.5px; }
         .wgj .c.pair { font-size: clamp(8px, 2vw, 13px); }
         .wgj .row-gap { grid-column: 1 / -1; height: 6px; background: #f0fdfa; border-right: 1px solid #5eead4; border-bottom: 1px solid #5eead4; }
-        .wgj .c.over { background: #fef2f2; }
-        .wgj .c.mark { background: #ccfbf1; }
+                .wgj .c.mark { background: #ccfbf1; }
+        .wgj .c.limit { box-shadow: inset -3px 0 0 #f43f5e; }
+        .wgj .c.over { background: #ffe4e6; }
+        .wgj .c.sel { background: #99f6e4; }
+        .wgj .c.caret { position: relative; background: #f0fdfa; }
+        .wgj .c.caret::before { content: ''; position: absolute; left: 2px; top: 15%; bottom: 15%; width: 2px; background: #0f766e; animation: blink 1s steps(1) infinite; }
+        @keyframes blink { 50% { opacity: 0; } }
+        .grid-input { position: absolute; left: 0; top: 0; width: 1em; height: 1em; padding: 0; border: 0; margin: 0; resize: none; overflow: hidden;
+                      opacity: 0; font-size: 16px; line-height: 1; color: transparent; caret-color: transparent; background: transparent; outline: none; z-index: 1; }
 
         .tab-on { background: #0f172a; color: #fff; }
         .tab-off { background: #fff; color: #475569; }
@@ -92,7 +99,10 @@
             </div>
         </div>
         <div class="p-3 space-y-2">
-            <button onclick="editTopic(null)" class="w-full bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold py-2.5 rounded-lg transition"><i class="fa-solid fa-plus mr-1"></i>새 논제 만들기</button>
+            <div class="grid grid-cols-2 gap-2">
+                <button onclick="openImport()" class="bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold py-2.5 rounded-lg transition"><i class="fa-solid fa-camera mr-1"></i>교재 사진으로</button>
+                <button onclick="editTopic(null)" class="bg-slate-800 hover:bg-slate-700 text-xs font-bold py-2.5 rounded-lg transition"><i class="fa-solid fa-keyboard mr-1"></i>직접 입력</button>
+            </div>
             <div class="relative">
                 <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs"></i>
                 <input id="searchInput" oninput="ui.search=this.value;renderSidebar()" placeholder="논제 검색" class="w-full bg-slate-800 text-sm text-white rounded-lg pl-8 pr-3 py-2 outline-none focus:ring-2 focus:ring-teal-500 placeholder:text-slate-500">
@@ -144,7 +154,7 @@
                 <div class="flex rounded-lg overflow-hidden border border-slate-200 text-xs font-bold" id="wTabs">
                     <button data-tab="outline" class="px-3 py-1.5">개요</button>
                     <button data-tab="essay" class="px-3 py-1.5 border-l border-slate-200">답안</button>
-                    <button data-tab="grid" class="px-3 py-1.5 border-l border-slate-200">원고지</button>
+                    <button data-tab="grid" class="px-3 py-1.5 border-l border-slate-200">원고지에 쓰기</button>
                 </div>
                 <div class="flex-1"></div>
                 <button onclick="insertOutlineTemplate()" id="tplBtn" class="text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"><i class="fa-solid fa-list-ol mr-1"></i>개요 틀 넣기</button>
@@ -152,7 +162,14 @@
             <div class="flex-1 min-h-0 p-3 pt-2 flex flex-col">
                 <textarea id="outlineInput" class="hidden flex-1 w-full bg-white border border-slate-200 rounded-xl p-4" placeholder="쓰기 전에 생각을 정리해요.&#10;&#10;- 논제가 묻는 것은?&#10;- 내 주장(결론) 한 문장&#10;- 근거 1, 2 (제시문 어디를 쓸지)&#10;- 예상 반론과 재반박"></textarea>
                 <textarea id="essayInput" class="flex-1 w-full bg-white border border-slate-200 rounded-xl p-4 serif" placeholder="여기에 답안을 써요. 문단은 줄바꿈으로 나눠요." spellcheck="false"></textarea>
-                <div id="gridView" class="hidden flex-1 overflow-y-auto bg-white border border-slate-200 rounded-xl p-3"></div>
+                <div id="gridView" class="hidden flex-1 overflow-y-auto bg-white border border-slate-200 rounded-xl p-2 sm:p-3">
+                    <div id="gridLegend" class="text-[11px] text-slate-500 mb-2 flex flex-wrap gap-x-3 justify-center"></div>
+                    <div class="relative mx-auto" style="max-width:640px">
+                        <div id="gridCells" class="wgj cursor-text select-none"></div>
+                        <textarea id="gridInput" class="grid-input" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
+                    </div>
+                    <p class="text-[11px] text-slate-400 text-center mt-3">칸을 눌러 바로 써요. Enter를 누르면 새 문단(첫 칸 비움)이 시작돼요.</p>
+                </div>
             </div>
             <div class="bg-white border-t border-slate-200 px-3 py-2">
                 <div class="flex items-center gap-3 text-xs text-slate-500 flex-wrap">
@@ -185,6 +202,8 @@
                 <label class="block"><span class="text-xs font-bold text-slate-500">분류</span>
                     <input id="tCat" list="catList" class="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-teal-500" placeholder="예) 법철학"><datalist id="catList"></datalist></label>
             </div>
+            <label class="block"><span class="text-xs font-bold text-slate-500">출처 <span class="font-normal text-slate-400">(선택) 교재·학교·연도·쪽</span></span>
+                <input id="tSource" class="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-teal-500" placeholder="예) ○○대 2024 편입 인문계 / 교재 p.132"></label>
             <label class="block"><span class="text-xs font-bold text-slate-500">제시문 <span class="font-normal text-slate-400">— [가], [나]처럼 여러 개를 이어 써도 돼요</span></span>
                 <textarea id="tPassage" rows="9" class="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-teal-500 serif leading-7" placeholder="[가] ...&#10;&#10;[나] ..."></textarea></label>
             <label class="block"><span class="text-xs font-bold text-slate-500">문항 (논제)</span>
@@ -204,6 +223,37 @@
         <div class="px-5 py-4 border-t border-slate-100 flex gap-2">
             <button onclick="closeTopicModal()" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-2.5 rounded-xl text-sm font-bold">취소</button>
             <button onclick="saveTopicModal()" class="flex-[2] bg-teal-600 hover:bg-teal-500 text-white py-2.5 rounded-xl text-sm font-bold">저장</button>
+        </div>
+    </div>
+</div>
+
+<!-- 교재 사진으로 논제 넣기 -->
+<div id="importModal" class="hidden fixed inset-0 bg-black/60 z-[150] flex items-center justify-center p-3">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[94vh] flex flex-col">
+        <div class="px-5 pt-5 pb-3 border-b border-slate-100 flex items-center">
+            <h3 class="font-extrabold text-slate-800 flex-1"><i class="fa-solid fa-camera text-teal-500 mr-1.5"></i>교재 사진으로 논제 넣기</h3>
+            <button onclick="closeImport()" class="w-8 h-8 rounded-lg hover:bg-slate-100 text-slate-400"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="p-5 space-y-4 overflow-y-auto">
+            <ol class="space-y-3 text-sm text-slate-700">
+                <li class="flex gap-3"><span class="w-6 h-6 shrink-0 rounded-full bg-teal-600 text-white text-xs font-bold flex items-center justify-center">1</span>
+                    <div class="flex-1 min-w-0">요청문을 복사해요.
+                        <button onclick="copyImportPrompt()" class="mt-2 w-full bg-slate-900 hover:bg-slate-700 text-white font-bold py-2.5 rounded-xl text-sm"><i class="fa-regular fa-copy mr-1"></i>요청문 복사</button>
+                        <textarea id="importPromptBox" readonly rows="5" class="hidden mt-2 w-full border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono"></textarea>
+                    </div></li>
+                <li class="flex gap-3"><span class="w-6 h-6 shrink-0 rounded-full bg-teal-600 text-white text-xs font-bold flex items-center justify-center">2</span>
+                    <div>ChatGPT·Gemini·Claude 앱을 열고 <b>교재 사진(제시문, 문항이 보이게, 여러 장 가능)</b>을 첨부한 뒤 요청문을 붙여넣어 보내요.</div></li>
+                <li class="flex gap-3"><span class="w-6 h-6 shrink-0 rounded-full bg-teal-600 text-white text-xs font-bold flex items-center justify-center">3</span>
+                    <div class="flex-1 min-w-0">AI가 준 답(코드 블록)을 통째로 복사해 아래에 붙여넣어요.
+                        <textarea id="importPaste" rows="6" class="mt-2 w-full border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono outline-none focus:ring-2 focus:ring-teal-500" placeholder='{"title": "...", "passage": "...", "questions": [...]}'></textarea>
+                        <div id="importErr" class="hidden text-xs text-rose-600 mt-1"></div>
+                    </div></li>
+            </ol>
+            <div id="importPreview" class="space-y-3"></div>
+        </div>
+        <div class="px-5 py-4 border-t border-slate-100 flex gap-2">
+            <button onclick="closeImport()" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-2.5 rounded-xl text-sm font-bold">취소</button>
+            <button id="importSaveBtn" onclick="saveImport()" disabled class="flex-[2] bg-teal-600 hover:bg-teal-500 disabled:opacity-40 text-white py-2.5 rounded-xl text-sm font-bold">논제로 저장</button>
         </div>
     </div>
 </div>
@@ -362,7 +412,10 @@ window.showSync = function (msg, color) {
     if (m) m.textContent = msg;
     if (t) { t.classList.remove('hidden'); clearTimeout(window._tt); window._tt = setTimeout(() => t.classList.add('hidden'), 1500); }
 };
-function toast(msg) { window.showSync(msg, '#5eead4'); }
+function toast(msg) {
+    const t = $('syncToast'); $('syncMsg').textContent = msg; $('syncDot').style.background = '#5eead4';
+    t.classList.remove('hidden'); clearTimeout(window._tt); window._tt = setTimeout(() => t.classList.add('hidden'), 2200);
+}
 
 // ── 글자수 ──
 function countText(t) {
@@ -379,7 +432,7 @@ function normalize(data) {
     const d = data && typeof data === 'object' ? data : {};
     const topics = Array.isArray(d.topics) ? d.topics : [];
     const answers = Array.isArray(d.answers) ? d.answers : [];
-    topics.forEach(t => { t.title = t.title || '제목 없음'; t.passage = t.passage || ''; t.question = t.question || ''; t.category = t.category || ''; t.guide = t.guide || ''; });
+    topics.forEach(t => { t.title = t.title || '제목 없음'; t.source = t.source || ''; t.passage = t.passage || ''; t.question = t.question || ''; t.category = t.category || ''; t.guide = t.guide || ''; });
     answers.forEach(a => { a.text = a.text || ''; a.outline = a.outline || ''; a.check = Array.isArray(a.check) ? a.check : []; a.memo = a.memo || ''; a.duration = a.duration || 0; });
     const deleted = d.deleted && typeof d.deleted === 'object' ? { ...d.deleted } : {};
     return { topics, answers, deleted, updatedAt: d.updatedAt || 0 };
@@ -479,7 +532,7 @@ function renderSidebar() {
     const q = (ui.search || '').trim().toLowerCase();
     const list = state.topics
         .filter(t => !ui.cat || t.category === ui.cat)
-        .filter(t => !q || (t.title + t.question + t.passage + t.category).toLowerCase().includes(q))
+        .filter(t => !q || (t.title + t.question + t.passage + t.category + t.source).toLowerCase().includes(q))
         .sort((x, y) => (lastActivity(y) - lastActivity(x)) || x.title.localeCompare(y.title));
     $('topicList').innerHTML = list.length ? list.map(t => {
         const ans = answersOf(t.id), done = ans.filter(a => a.status === 'done'), draft = ans.some(a => a.status !== 'done');
@@ -551,7 +604,7 @@ function renderHome() {
             <p class="text-sm text-teal-100/80 mt-2">개요 → 답안 → 자기 점검 → AI 첨삭 → 다시 쓰기 순서로 연습해 보세요.</p>
             <div class="flex flex-wrap gap-2 mt-4">
                 <button onclick="randomTopic()" class="bg-white text-slate-900 font-bold text-sm px-4 py-2 rounded-xl hover:bg-teal-50"><i class="fa-solid fa-shuffle mr-1"></i>아무 논제나 풀기</button>
-                <button onclick="editTopic(null)" class="bg-white/10 hover:bg-white/20 font-bold text-sm px-4 py-2 rounded-xl"><i class="fa-solid fa-plus mr-1"></i>새 논제 만들기</button>
+                <button onclick="openImport()" class="bg-white/10 hover:bg-white/20 font-bold text-sm px-4 py-2 rounded-xl"><i class="fa-solid fa-camera mr-1"></i>교재 사진으로 논제 넣기</button>
             </div>
         </div>
         ${drafts.length ? `<div class="bg-amber-50 border border-amber-200 rounded-2xl p-4">
@@ -601,6 +654,7 @@ function conditionChips(t) {
     if (t.minChars || t.maxChars) out.push(`<span class="chip bg-teal-50 text-teal-700"><i class="fa-solid fa-ruler-horizontal"></i>${t.minChars ? t.minChars : ''}${t.minChars && t.maxChars ? '~' : ''}${t.maxChars ? t.maxChars : ''}자${!t.maxChars ? ' 이상' : !t.minChars ? ' 이하' : ''}</span>`);
     if (t.timeLimit) out.push(`<span class="chip bg-sky-50 text-sky-700"><i class="fa-regular fa-clock"></i>${t.timeLimit}분</span>`);
     if (t.category) out.push(`<span class="chip bg-slate-100 text-slate-600">${escapeHtml(t.category)}</span>`);
+    if (t.source) out.push(`<span class="chip bg-amber-50 text-amber-700"><i class="fa-solid fa-book"></i>${escapeHtml(t.source)}</span>`);
     return out.join(' ');
 }
 function promptHtml(t, compact) {
@@ -644,7 +698,7 @@ function editTopic(id) {
     $('tTitle').value = t.title || ''; $('tCat').value = t.category || (id ? '' : ui.cat || '');
     $('tPassage').value = t.passage || ''; $('tQuestion').value = t.question || '';
     $('tMin').value = t.minChars || ''; $('tMax').value = t.maxChars || ''; $('tTime').value = t.timeLimit || '';
-    $('tGuide').value = t.guide || '';
+    $('tGuide').value = t.guide || ''; $('tSource').value = t.source || '';
     $('catList').innerHTML = categories().map(c => `<option value="${escapeHtml(c)}">`).join('');
     $('topicModal').classList.remove('hidden');
     closeSidebar();
@@ -657,7 +711,7 @@ async function saveTopicModal() {
     let minC = parseInt($('tMin').value) || 0, maxC = parseInt($('tMax').value) || 0;
     if (minC && maxC && minC > maxC) [minC, maxC] = [maxC, minC];
     const data = { title: title || question.slice(0, 30), category: $('tCat').value.trim(), passage: $('tPassage').value.replace(/\s+$/, ''), question,
-        minChars: minC, maxChars: maxC, timeLimit: parseInt($('tTime').value) || 0, guide: $('tGuide').value.trim() };
+        minChars: minC, maxChars: maxC, timeLimit: parseInt($('tTime').value) || 0, guide: $('tGuide').value.trim(), source: $('tSource').value.trim() };
     let id = editingTopicId;
     if (id) Object.assign(topicById(id), data);
     else { id = uid(); state.topics.push({ id, createdAt: Date.now(), ...data }); }
@@ -671,6 +725,111 @@ async function deleteTopic(id) {
     state.topics = state.topics.filter(x => x.id !== id);
     state.answers = state.answers.filter(a => a.topicId !== id);
     save(); goHome();
+}
+
+// ── 교재 사진으로 논제 넣기 (다른 AI에서 사진 인식 → JSON 붙여넣기) ──
+const IMPORT_PROMPT = `첨부한 사진은 편입 논술 교재에 실린 논술 문제입니다. 사진 속 제시문과 문항을 아래 JSON 형식으로 정확히 옮겨 주세요.
+
+규칙
+1. 제시문과 문항은 사진의 원문을 한 글자도 바꾸지 말고 그대로 옮기세요. 요약·번역·맞춤법 수정 금지. 영어 제시문은 영어 그대로.
+2. [가], [나], (A), <제시문 1> 같은 표시는 그대로 두고, 제시문 사이와 문단 사이는 빈 줄(\\n\\n)로 나누세요.
+3. 표·그래프·그림은 [표] 또는 [그림] 뒤에 내용을 글로 옮기세요. 밑줄·빈칸·기호(㉠, ⓐ 등)도 그대로 표시하세요.
+4. 사진이 여러 장이면 순서대로 이어 붙이고, 페이지 번호·머리말·꼬리말·해설 광고는 빼세요.
+5. 문항이 여러 개면 questions에 하나씩 넣으세요. 각 문항의 분량 조건을 숫자로 바꾸세요.
+   - "600±50자" → minChars 550, maxChars 650
+   - "800자 내외" → minChars 720, maxChars 880 (±10%)
+   - "1000자 이내" → minChars 0, maxChars 1000
+   - 분량 조건이 없으면 0
+6. 시험 시간이 적혀 있으면 timeLimit에 분 단위로, 없으면 0.
+7. 교재에 해설·예시 답안·채점 기준이 함께 보이면 guide에 핵심만 5줄 이내로 정리하고, 없으면 빈 문자열.
+8. 서로 다른 문제(제시문 묶음)가 여러 개 있으면 JSON 객체들의 배열로 주세요.
+
+반드시 JSON만 코드 블록 하나로 답하세요. 설명 문장은 쓰지 마세요.
+
+{
+  "title": "핵심 쟁점을 담은 짧은 제목 (20자 이내)",
+  "category": "분야 (예: 인문, 사회, 법, 경제, 영어 제시문)",
+  "source": "사진에 보이는 학교·연도·교재·쪽수 (없으면 빈 문자열)",
+  "passage": "제시문 전체 원문",
+  "questions": [
+    { "label": "문항 1", "question": "문항 원문 그대로", "minChars": 0, "maxChars": 0 }
+  ],
+  "timeLimit": 0,
+  "guide": ""
+}`;
+let importItems = [];
+function openImport() {
+    importItems = [];
+    $('importPaste').value = ''; $('importErr').classList.add('hidden');
+    $('importPromptBox').classList.add('hidden');
+    renderImportPreview();
+    $('importModal').classList.remove('hidden');
+    closeSidebar();
+}
+function closeImport() { $('importModal').classList.add('hidden'); importItems = []; if (pendingRemote && !isBusy()) applyMerged(mergeStates(state, lastRemote || pendingRemote)); }
+async function copyImportPrompt() {
+    try { await navigator.clipboard.writeText(IMPORT_PROMPT); toast('요청문을 복사했어요'); }
+    catch (e) {
+        const box = $('importPromptBox'); box.value = IMPORT_PROMPT; box.classList.remove('hidden'); box.focus(); box.select();
+        toast('아래 글을 길게 눌러 복사해 주세요');
+    }
+}
+function parseImport(text) {
+    let s = String(text || '').trim();
+    const fence = s.match(/```(?:json)?\s*([\s\S]*?)```/i); if (fence) s = fence[1];
+    const i = s.search(/[\[{]/); if (i < 0) throw new Error('JSON을 찾을 수 없어요.');
+    const close = s[i] === '[' ? ']' : '}';
+    const raw = JSON.parse(s.slice(i, s.lastIndexOf(close) + 1));
+    const list = Array.isArray(raw) ? raw : [raw];
+    const num = v => Math.max(0, Math.round(+v || 0));
+    const out = [];
+    list.forEach(o => {
+        if (!o || typeof o !== 'object') return;
+        const qs = Array.isArray(o.questions) && o.questions.length ? o.questions : [{ question: o.question || '', minChars: o.minChars, maxChars: o.maxChars }];
+        const base = { title: String(o.title || '').trim() || '제목 없는 논제', category: String(o.category || '').trim(), source: String(o.source || '').trim(),
+            passage: String(o.passage || '').replace(/\s+$/, ''), timeLimit: num(o.timeLimit), guide: String(o.guide || '').trim() };
+        qs.forEach((q, k) => {
+            q = typeof q === 'string' ? { question: q } : (q || {});
+            let minC = num(q.minChars), maxC = num(q.maxChars);
+            if (minC && maxC && minC > maxC) [minC, maxC] = [maxC, minC];
+            const label = String(q.label || '').trim() || `문항 ${k + 1}`;
+            out.push({ ...base, title: qs.length > 1 ? `${base.title} (${label})` : base.title, question: String(q.question || '').trim(), minChars: minC, maxChars: maxC, on: true });
+        });
+    });
+    if (!out.length) throw new Error('논제를 찾지 못했어요.');
+    return out;
+}
+function renderImportPreview() {
+    $('importSaveBtn').disabled = !importItems.some(x => x.on);
+    $('importSaveBtn').textContent = importItems.filter(x => x.on).length > 1 ? `논제 ${importItems.filter(x => x.on).length}개 저장` : '논제로 저장';
+    if (!importItems.length) { $('importPreview').innerHTML = ''; return; }
+    $('importPreview').innerHTML = `<div class="text-xs font-extrabold text-slate-500">인식된 논제 ${importItems.length}개 <span class="font-normal text-slate-400">— 저장한 뒤에도 수정할 수 있어요</span></div>` +
+        importItems.map((t, i) => `<label class="block border ${t.on ? 'border-teal-300 bg-teal-50/40' : 'border-slate-200 opacity-60'} rounded-xl p-3 cursor-pointer">
+            <div class="flex items-start gap-2">
+                <input type="checkbox" ${t.on ? 'checked' : ''} onchange="importItems[${i}].on=this.checked;renderImportPreview()" class="mt-1 accent-teal-600">
+                <div class="flex-1 min-w-0">
+                    <div class="text-sm font-extrabold text-slate-800">${escapeHtml(t.title)}</div>
+                    <div class="flex flex-wrap gap-1 mt-1">${conditionChips(t)}</div>
+                    ${t.passage ? `<div class="text-xs text-slate-500 mt-2 serif line-clamp-3 whitespace-pre-wrap">${escapeHtml(t.passage.slice(0, 300))}</div><div class="text-[11px] text-slate-400 mt-0.5">제시문 ${t.passage.length.toLocaleString()}자</div>` : '<div class="text-xs text-amber-600 mt-2">제시문이 비어 있어요</div>'}
+                    <div class="text-xs font-bold text-slate-700 mt-2 bg-white border-l-2 border-teal-500 px-2 py-1">${escapeHtml(t.question || '(문항이 비어 있어요)')}</div>
+                </div>
+            </div></label>`).join('');
+}
+$('importPaste').addEventListener('input', () => {
+    const v = $('importPaste').value.trim(), err = $('importErr');
+    if (!v) { importItems = []; err.classList.add('hidden'); renderImportPreview(); return; }
+    try { importItems = parseImport(v); err.classList.add('hidden'); }
+    catch (e) { importItems = []; err.textContent = '아직 읽을 수 없어요. AI 답의 처음 { 부터 마지막 } 까지 모두 붙여넣었는지 확인해 주세요. (' + e.message + ')'; err.classList.remove('hidden'); }
+    renderImportPreview();
+});
+function saveImport() {
+    const pick = importItems.filter(x => x.on); if (!pick.length) return;
+    let firstId = null; const now = Date.now();
+    pick.forEach((t, k) => { const { on, ...data } = t; const id = uid(); firstId = firstId || id; state.topics.push({ id, createdAt: now + k, ...data }); });
+    save();
+    $('importModal').classList.add('hidden'); importItems = [];
+    toast(`논제 ${pick.length}개를 저장했어요`);
+    openTopic(firstId);
 }
 
 // ── 쓰기 ──
@@ -699,7 +858,7 @@ function openWriting(id) {
     $('essayInput').value = a.text; $('outlineInput').value = a.outline;
     $('writeOverlay').classList.remove('hidden');
     showPromptMobile(false);
-    setWTab(ui.wTab === 'outline' && !(a.text && !a.outline) ? 'outline' : 'essay');
+    setWTab(ui.wTab === 'outline' && !(a.text && !a.outline) ? 'outline' : ui.wTab === 'grid' ? 'grid' : 'essay');
     updateCounter(); updateTimer();
     clearInterval(timerInt); timerInt = setInterval(updateTimer, 500);
     $('wSaved').textContent = a.updatedAt ? `저장됨 ${fmtDateTime(a.updatedAt).slice(11)}` : '자동 저장';
@@ -729,6 +888,7 @@ function onWritingInput() {
     const a = curWriting(); if (!a) return;
     a.text = $('essayInput').value; a.outline = $('outlineInput').value;
     updateCounter();
+    if (ui.wTab === 'grid' && document.activeElement !== $('gridInput')) $('gridInput').value = $('essayInput').value;
     if (ui.wTab === 'grid') renderGrid();
     $('wSaved').textContent = '입력 중...';
     clearTimeout(draftTimer);
@@ -768,7 +928,12 @@ function setWTab(tab) {
     $('essayInput').classList.toggle('hidden', tab !== 'essay');
     $('gridView').classList.toggle('hidden', tab !== 'grid');
     $('tplBtn').classList.toggle('hidden', tab !== 'outline');
-    if (tab === 'grid') renderGrid();
+    if (tab === 'grid') {
+        const inp = $('gridInput'), pos = $('essayInput').selectionEnd ?? $('essayInput').value.length;
+        inp.value = $('essayInput').value;
+        renderGrid();
+        setTimeout(() => focusGrid(Math.min(pos, inp.value.length)), 30);
+    }
     else setTimeout(() => (tab === 'outline' ? $('outlineInput') : $('essayInput')).focus(), 30);
 }
 $('wTabs').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setWTab(b.dataset.tab); });
@@ -810,56 +975,124 @@ window.addEventListener('beforeunload', () => { if (writing) persistDraft(); });
 document.addEventListener('visibilitychange', () => { if (document.hidden && writing) persistDraft(); });
 
 // ── 원고지 ──
-// 한 칸에 한 글자, 문단 첫 칸 비우기, 영문 소문자·숫자는 두 글자씩 한 칸, 줄 첫 칸의 띄어쓰기는 생략
-function gridCells(text) {
-    const cells = [];
-    const COLS = 20;
-    const paras = (text || '').replace(/\r/g, '').split('\n');
-    paras.forEach((p, pi) => {
-        p = p.replace(/\s+$/, '');
-        if (!p.trim()) return;
-        if (cells.length % COLS) while (cells.length % COLS) cells.push({ ch: '' });
-        cells.push({ ch: '' }); // 들여쓰기
-        const chars = [...p.replace(/^\s+/, '')];
-        for (let i = 0; i < chars.length; i++) {
-            const ch = chars[i];
-            if (/\s/.test(ch)) {
-                if (cells.length % COLS === 0) continue;
-                cells.push({ ch: '' }); continue;
-            }
-            if (/[a-z0-9]/.test(ch) && chars[i + 1] && /[a-z0-9]/.test(chars[i + 1])) { cells.push({ ch: ch + chars[i + 1], pair: true }); i++; continue; }
-            // 문장 부호가 줄 첫 칸에 오면 앞 줄 끝 칸에 같이 씀
-            if (/[.,!?)」』’”]/.test(ch) && cells.length % COLS === 0 && cells.length) { const last = cells[cells.length - 1]; last.ch += ch; last.pair = true; continue; }
-            cells.push({ ch });
+// 한 칸에 한 글자, 문단 첫 칸 비우기, 영문 소문자·숫자는 두 글자씩 한 칸, 줄 첫 칸의 띄어쓰기는 생략,
+// 줄 첫 칸에 올 문장 부호는 앞 줄 끝 칸에 같이 씀.
+// pos[i] = 글의 i번째 글자 앞에 커서가 있을 때 커서가 놓일 칸 번호
+const COLS = 20;
+function gridLayout(text) {
+    text = (text || '').replace(/\r/g, '');
+    const cells = [], pos = new Array(text.length + 1);
+    let paraStart = true;
+    for (let i = 0; i <= text.length; i++) {
+        if (paraStart) {
+            while (cells.length % COLS) cells.push({ ch: '', s: -1 });
+            cells.push({ ch: '', s: -1 }); // 들여쓰기 칸
+            paraStart = false;
         }
-    });
-    return cells;
+        if (i === text.length) { pos[i] = cells.length; break; }
+        const ch = text[i];
+        if (ch === '\n') { pos[i] = cells.length; paraStart = true; continue; }
+        if (/\s/.test(ch)) {
+            pos[i] = cells.length;
+            if (cells.length % COLS === 0) continue; // 줄 첫 칸 띄어쓰기는 생략
+            cells.push({ ch: '', s: i, e: i + 1 }); continue;
+        }
+        if (/[a-z0-9]/.test(ch) && /[a-z0-9]/.test(text[i + 1] || '')) {
+            pos[i] = pos[i + 1] = cells.length;
+            cells.push({ ch: ch + text[i + 1], s: i, e: i + 2, pair: true }); i++; continue;
+        }
+        if (/[.,!?)」』’”]/.test(ch) && cells.length % COLS === 0 && cells.length && cells[cells.length - 1].s >= 0) {
+            const last = cells[cells.length - 1]; last.ch += ch; last.pair = true; last.e = i + 1;
+            pos[i] = cells.length - 1; continue;
+        }
+        pos[i] = cells.length;
+        cells.push({ ch, s: i, e: i + 1 });
+    }
+    // 끝에 남는 빈 문단의 들여쓰기 칸은 사용 칸 수에서 뺌
+    let used = cells.length;
+    while (used && cells[used - 1].s < 0 && !cells[used - 1].ch) used--;
+    return { cells, pos, used };
 }
-function gridHtml(text, maxChars) {
-    const cells = gridCells(text);
-    const COLS = 20;
-    const minRows = Math.max(10, Math.ceil(((maxChars || 0) * 1.1) / COLS));
-    const total = Math.max(Math.ceil(cells.length / COLS) + 2, minRows) * COLS;
+function gridCellsHtml(L, maxChars, opt = {}) {
+    const total = Math.max(Math.ceil((Math.max(L.cells.length, opt.caret ?? 0) + 1) / COLS) + (opt.extraRows ?? 2), Math.max(opt.minRows ?? 10, Math.ceil(((maxChars || 0) * 1.1) / COLS))) * COLS;
     let html = '';
     for (let i = 0; i < total; i++) {
         if (i && i % COLS === 0) html += '<div class="row-gap"></div>';
-        const c = cells[i] || { ch: '' };
-        const cls = ['c']; if (c.pair) cls.push('pair'); if (maxChars && i >= maxChars) cls.push('over');
+        const c = L.cells[i] || { ch: '' };
+        const cls = ['c']; if (c.pair) cls.push('pair'); if (maxChars && i >= maxChars && i < L.used) cls.push('over');
+        else if (maxChars && i === maxChars - 1) cls.push('limit');
         if ((i + 1) % 100 === 0) cls.push('mark');
-        html += `<div class="${cls.join(' ')}">${escapeHtml(c.ch)}</div>`;
+        if (opt.selA != null && c.s != null && c.s >= 0 && c.s < opt.selB && c.e > opt.selA) cls.push('sel');
+        if (i === opt.caret) cls.push('caret');
+        html += `<div class="${cls.join(' ')}" data-i="${i}">${escapeHtml(c.ch)}</div>`;
     }
-    return { html: `<div class="wgj mx-auto">${html}</div>`, used: cells.length };
+    return html;
 }
+function gridHtml(text, maxChars) {
+    const L = gridLayout(text);
+    return { html: `<div class="wgj mx-auto">${gridCellsHtml(L, maxChars, { extraRows: 1 })}</div>`, used: L.used };
+}
+function gridLegend(used, maxChars) {
+    return `<span>원고지 <b class="text-slate-800 tabular-nums">${used}</b>칸 사용 (${(used / 200).toFixed(1)}매)</span>
+        <span>· 100칸마다 <span class="inline-block w-2.5 h-2.5 bg-teal-100 border border-teal-300 align-middle"></span></span>
+        ${maxChars ? `<span>· 최대 분량 넘는 칸 <span class="inline-block w-2.5 h-2.5 bg-rose-100 border border-rose-300 align-middle"></span></span>` : ''}`;
+}
+// 원고지 칸 번호 → 글 위치
+function cellToIndex(L, k) { for (let i = 0; i < L.pos.length; i++) if (L.pos[i] >= k) return i; return L.pos.length - 1; }
 function renderGrid() {
     const a = curWriting(); if (!a) return;
-    const t = topicById(a.topicId);
-    const g = gridHtml($('essayInput').value, t.maxChars);
-    $('gridView').innerHTML = `<div class="text-[11px] text-slate-500 mb-2 flex flex-wrap gap-x-3 justify-center">
-        <span>원고지 기준 <b class="text-slate-800">${g.used}</b>칸 사용 (${(g.used / 200).toFixed(1)}매, 200자 원고지)</span>
-        <span>· 100칸마다 <span class="inline-block w-2.5 h-2.5 bg-teal-100 border border-teal-300 align-middle"></span></span>
-        ${t.maxChars ? `<span>· 최대 분량 넘는 칸 <span class="inline-block w-2.5 h-2.5 bg-rose-50 border border-rose-200 align-middle"></span></span>` : ''}
-    </div>${g.html}<p class="text-[11px] text-slate-400 text-center mt-3">원고지는 보기 전용이에요. 고치려면 '답안' 탭에서 쓰세요.</p>`;
+    const t = topicById(a.topicId), inp = $('gridInput');
+    const text = inp.value, L = gridLayout(text);
+    const s0 = inp.selectionStart ?? text.length, s1 = inp.selectionEnd ?? s0;
+    const caret = L.pos[Math.min(s1, text.length)];
+    $('gridLegend').innerHTML = gridLegend(L.used, t.maxChars);
+    $('gridCells').innerHTML = gridCellsHtml(L, t.maxChars, { caret: document.activeElement === inp ? caret : null, selA: s0 !== s1 ? s0 : null, selB: s1 });
+    // 입력 칸을 커서 칸 위에 두어 한글 조합 창·키보드가 그 근처에 뜨게 함
+    const cel = $('gridCells').querySelector(`[data-i="${caret}"]`);
+    if (cel) {
+        inp.style.left = cel.offsetLeft + 'px'; inp.style.top = cel.offsetTop + 'px';
+        inp.style.width = cel.offsetWidth + 'px'; inp.style.height = cel.offsetHeight + 'px';
+        if (document.activeElement === inp) {
+            const box = $('gridView'), r = cel.getBoundingClientRect(), br = box.getBoundingClientRect();
+            if (r.bottom > br.bottom - 8) box.scrollTop += r.bottom - br.bottom + 40;
+            else if (r.top < br.top + 8) box.scrollTop -= br.top - r.top + 40;
+        }
+    }
+    gridLast = L;
 }
+let gridLast = null;
+function focusGrid(idx) {
+    const inp = $('gridInput');
+    inp.focus({ preventScroll: true });
+    if (idx != null) inp.setSelectionRange(idx, idx);
+    renderGrid();
+}
+$('gridCells').addEventListener('mousedown', e => {
+    const c = e.target.closest('[data-i]'); if (!c || !gridLast) return;
+    e.preventDefault();
+    focusGrid(cellToIndex(gridLast, +c.dataset.i));
+});
+$('gridView').addEventListener('mousedown', e => { if (!e.target.closest('[data-i]') && e.target.id !== 'gridInput') { e.preventDefault(); focusGrid(null); } });
+$('gridInput').addEventListener('input', () => {
+    $('essayInput').value = $('gridInput').value;
+    onWritingInput();
+});
+['keyup', 'select', 'focus', 'blur'].forEach(ev => $('gridInput').addEventListener(ev, () => setTimeout(renderGrid, 0)));
+document.addEventListener('selectionchange', () => { if (document.activeElement === $('gridInput')) renderGrid(); });
+$('gridInput').addEventListener('keydown', e => {
+    if (e.isComposing || e.keyCode === 229) return;
+    const inp = $('gridInput');
+    if (e.key === 'Tab') { e.preventDefault(); return; }
+    if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && gridLast) {
+        e.preventDefault();
+        const cur = gridLast.pos[inp.selectionEnd];
+        const k = cur + (e.key === 'ArrowUp' ? -COLS : COLS);
+        const idx = k < 0 ? 0 : cellToIndex(gridLast, k);
+        if (e.shiftKey) inp.setSelectionRange(Math.min(inp.selectionStart, idx), Math.max(inp.selectionStart, idx));
+        else inp.setSelectionRange(idx, idx);
+        renderGrid();
+    }
+});
 
 // ── 답안 상세 ──
 function renderAnswer() {
@@ -929,7 +1162,7 @@ function renderAnswer() {
         const b = e.target.closest('button'); if (!b) return;
         document.querySelectorAll('#ansView button').forEach(x => { x.classList.toggle('tab-on', x === b); x.classList.toggle('tab-off', x !== b); });
         const body = $('ansBody');
-        if (b.dataset.v === 'grid') { body.className = ''; body.innerHTML = gridHtml(a.text, t.maxChars).html; }
+        if (b.dataset.v === 'grid') { const g = gridHtml(a.text, t.maxChars); body.className = ''; body.innerHTML = `<div class="text-[11px] text-slate-500 mb-2 flex flex-wrap gap-x-3 justify-center">${gridLegend(g.used, t.maxChars)}</div>` + g.html; }
         else if (b.dataset.v === 'diff') { body.className = 'answer-text serif text-[15.5px] text-slate-800'; body.innerHTML = `<div class="text-[11px] text-slate-400 mb-2 font-sans"><span class="diff-old px-1">지운 부분</span> <span class="diff-new px-1">새로 쓴 부분</span> — ${fmtDateTime(prev.submittedAt || prev.createdAt)} 답안과 비교</div>` + diffHtml(prev.text, a.text); }
         else { body.className = 'answer-text serif text-[15.5px] text-slate-800'; body.innerHTML = escapeHtml(a.text); }
     });
@@ -1144,6 +1377,7 @@ document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
         if (dlgResolve) dlgResolve(null);
         else if (!$('aiModal').classList.contains('hidden')) closeAiModal();
+        else if (!$('importModal').classList.contains('hidden')) closeImport();
         else if (!$('topicModal').classList.contains('hidden')) closeTopicModal();
         else if (writing && !$('writePrompt').classList.contains('mhide') && window.innerWidth < 900) showPromptMobile(false);
     }
