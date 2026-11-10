@@ -30,7 +30,18 @@
             #overlay.show { display: block; }
         }
         .serif { font-family: 'Batang', 'Nanum Myeongjo', 'Noto Serif KR', 'AppleMyungjo', serif; }
-        .passage { white-space: pre-wrap; word-break: break-word; line-height: 1.9; }
+        .passage { word-break: break-word; line-height: 1.9; }
+        .passage .pt { white-space: pre-wrap; }
+        .ptable-wrap { overflow-x: auto; margin: 6px 0 10px; }
+        .ptable { border-collapse: collapse; font-size: 0.9em; line-height: 1.5; min-width: 60%; background: #fff; font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; }
+        .ptable th, .ptable td { border: 1px solid #94a3b8; padding: 4px 10px; text-align: center; white-space: nowrap; }
+        .ptable th { background: #f1f5f9; font-weight: 700; }
+        .ptable td.l, .ptable th.l { text-align: left; white-space: normal; }
+        .pfig { margin: 6px 0 10px; }
+        .pfig img { max-width: 100%; max-height: 520px; border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; cursor: zoom-in; }
+        .pfig figcaption { font-size: 12px; color: #64748b; line-height: 1.5; margin-top: 4px; font-family: 'Malgun Gothic', sans-serif; }
+        .pfig .missing { border: 2px dashed #cbd5e1; border-radius: 8px; padding: 14px; text-align: center; color: #94a3b8; font-size: 12px; font-family: 'Malgun Gothic', sans-serif; }
+        img[data-img]:not([src]) { min-width: 120px; min-height: 80px; background: #f1f5f9; }
         .answer-text { white-space: pre-wrap; word-break: break-word; line-height: 2; }
 
         /* 쓰기 화면 */
@@ -218,6 +229,14 @@
             </div>
             <label class="block"><span class="text-xs font-bold text-slate-500">채점 포인트·예시 답안 메모 <span class="font-normal text-slate-400">(선택, AI 첨삭 때 참고해요)</span></span>
                 <textarea id="tGuide" rows="3" class="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-teal-500" placeholder="예) [가]의 '법적 안정성' 개념을 정확히 요약했는지, 반론을 다뤘는지"></textarea></label>
+            <div>
+                <div class="flex items-center gap-2">
+                    <span class="text-xs font-bold text-slate-500 flex-1">그래프·그림 사진 <span class="font-normal text-slate-400">— 제시문의 [[그림 1]] 자리에 보여요</span></span>
+                    <label class="text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-slate-900 text-white cursor-pointer hover:bg-slate-700"><i class="fa-solid fa-plus mr-1"></i>그림 추가<input type="file" accept="image/*" class="hidden" onchange="addTopicImage(event, null)"></label>
+                </div>
+                <div id="tImgList" class="mt-2 grid grid-cols-2 sm:grid-cols-3 gap-2"></div>
+                <p class="text-[11px] text-slate-400 mt-1">표는 제시문에 <code class="bg-slate-100 px-1 rounded">| 구분 | 2010 | 2020 |</code> 처럼 한 줄에 한 행씩 쓰면 표로 보여요.</p>
+            </div>
             <p class="text-[11px] text-slate-400">글자수는 공백 포함으로 셉니다. 비워 두면 제한 없이 연습해요.</p>
         </div>
         <div class="px-5 py-4 border-t border-slate-100 flex gap-2">
@@ -287,6 +306,7 @@
             </div>
             <div id="aiTabPaste" class="hidden space-y-3">
                 <p class="text-sm text-slate-600"><b>1.</b> 아래 버튼으로 첨삭 요청문을 복사해 ChatGPT·Claude 등에 붙여넣어요.</p>
+                <p id="aiImgNote" class="hidden text-xs bg-amber-50 border border-amber-200 text-amber-900 rounded-lg px-3 py-2"><i class="fa-solid fa-image mr-1"></i>이 논제에는 그래프·그림이 있어요. 요청문과 함께 <b>그림 사진도 첨부</b>해야 AI가 그림까지 보고 첨삭해요.</p>
                 <button onclick="copyAiPrompt()" class="w-full bg-slate-900 hover:bg-slate-700 text-white font-bold py-2.5 rounded-xl text-sm"><i class="fa-regular fa-copy mr-1"></i>요청문 복사</button>
                 <p class="text-sm text-slate-600"><b>2.</b> AI가 준 JSON 답을 그대로 붙여넣어요.</p>
                 <textarea id="aiPasteText" rows="7" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono outline-none focus:ring-2 focus:ring-teal-500" placeholder='{"total": 78, "scores": [...], ...}'></textarea>
@@ -294,6 +314,11 @@
             </div>
         </div>
     </div>
+</div>
+
+<!-- 그림 크게 보기 -->
+<div id="zoomView" class="hidden fixed inset-0 bg-black/85 z-[600] flex items-center justify-center p-3 cursor-zoom-out" onclick="this.classList.add('hidden')">
+    <img id="zoomImg" class="max-w-full max-h-full rounded-lg bg-white" alt="">
 </div>
 
 <!-- 확인 창 (브라우저 기본 창 대신) -->
@@ -307,7 +332,7 @@
 <!-- Firebase (영단어장·오답노트와 같은 프로젝트, 별도 문서에 저장) -->
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-    import { getFirestore, doc, onSnapshot, setDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+    import { getFirestore, doc, onSnapshot, setDoc, getDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
     const app = initializeApp({
         apiKey:"AIzaSyAeplPxURZu9o0OQAFY5RBh1BP0P0dLcSc",
         authDomain:"my-eng-wordbook.firebaseapp.com",
@@ -322,6 +347,13 @@
         try { window.showSync('저장 중...','#facc15'); await setDoc(DATA_DOC, data); window.showSync('동기화됨','#34d399'); }
         catch(e) { window.showSync('저장 실패','#f87171'); }
     };
+    const imgDoc = id => doc(db, 'wordbook', 'essayimg_' + id);
+    window._imgRemote = {
+        put: (id, data) => setDoc(imgDoc(id), { data, at: Date.now() }),
+        get: async id => { const s = await getDoc(imgDoc(id)); return s.exists() ? s.data().data : null; },
+        del: id => deleteDoc(imgDoc(id))
+    };
+    window._imgRemoteReady && window._imgRemoteReady();
     onSnapshot(DATA_DOC, snap => {
         window.showSync('동기화됨','#34d399');
         window._onRemote(snap.exists() ? snap.data() : null);
@@ -432,7 +464,7 @@ function normalize(data) {
     const d = data && typeof data === 'object' ? data : {};
     const topics = Array.isArray(d.topics) ? d.topics : [];
     const answers = Array.isArray(d.answers) ? d.answers : [];
-    topics.forEach(t => { t.title = t.title || '제목 없음'; t.source = t.source || ''; t.passage = t.passage || ''; t.question = t.question || ''; t.category = t.category || ''; t.guide = t.guide || ''; });
+    topics.forEach(t => { t.title = t.title || '제목 없음'; t.source = t.source || ''; t.images = Array.isArray(t.images) ? t.images : []; t.passage = t.passage || ''; t.question = t.question || ''; t.category = t.category || ''; t.guide = t.guide || ''; });
     answers.forEach(a => { a.text = a.text || ''; a.outline = a.outline || ''; a.check = Array.isArray(a.check) ? a.check : []; a.memo = a.memo || ''; a.duration = a.duration || 0; });
     const deleted = d.deleted && typeof d.deleted === 'object' ? { ...d.deleted } : {};
     return { topics, answers, deleted, updatedAt: d.updatedAt || 0 };
@@ -648,6 +680,140 @@ function randomTopic() {
     openTopic(t.id);
 }
 
+// ── 제시문: 표(| 칸 | 칸 |)와 그림([[그림 1]] 설명)을 그려서 보여 줌 ──
+const FIG_RE = /^\s*\[\[\s*(그림\s*\d+)\s*\]\]\s*(.*)$/;
+const normLabel = l => l.replace(/\s+/g, ' ').replace(/그림\s*(\d+)/, '그림 $1').trim();
+function figLabels(passage) { return [...new Set((passage || '').split('\n').map(l => l.match(FIG_RE)).filter(Boolean).map(m => normLabel(m[1])))]; }
+function passageHtml(passage, images) {
+    const imgs = images || [];
+    const lines = (passage || '').replace(/\r/g, '').split('\n');
+    const isRow = l => /^\s*\|.*\|\s*$/.test(l);
+    const isSep = l => /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/.test(l);
+    const cellsOf = l => l.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+    const out = []; let text = []; const used = new Set();
+    const flushText = () => { if (text.length) out.push(`<div class="pt">${escapeHtml(text.join('\n'))}</div>`); text = []; };
+    for (let i = 0; i < lines.length; i++) {
+        const l = lines[i];
+        if (isRow(l)) {
+            const rows = []; while (i < lines.length && isRow(lines[i])) rows.push(lines[i++]); i--;
+            const hasHead = rows.length > 1 && isSep(rows[1]);
+            const body = rows.filter(r => !isSep(r)).map(cellsOf);
+            const td = (c, tag) => `<${tag}${c.length > 14 ? ' class="l"' : ''}>${escapeHtml(c)}</${tag}>`;
+            flushText();
+            out.push(`<div class="ptable-wrap"><table class="ptable">${body.map((r, k) => `<tr>${r.map(c => td(c, hasHead && k === 0 ? 'th' : 'td')).join('')}</tr>`).join('')}</table></div>`);
+            if (lines[i + 1] === '') i++;
+            continue;
+        }
+        const m = l.match(FIG_RE);
+        if (m) {
+            const label = normLabel(m[1]), img = imgs.find(x => normLabel(x.label) === label);
+            flushText(); used.add(label);
+            out.push(figHtml(label, m[2], img));
+            continue;
+        }
+        text.push(l);
+    }
+    flushText();
+    imgs.filter(x => !used.has(normLabel(x.label))).forEach(x => out.push(figHtml(x.label, '', x)));
+    return out.join('');
+}
+function figHtml(label, desc, img) {
+    const cap = `<b>[${escapeHtml(label)}]</b>${desc ? ' ' + escapeHtml(desc) : ''}`;
+    return img ? `<figure class="pfig"><img data-img="${img.id}" alt="${escapeHtml(label)}" onclick="zoomImg(this)"><figcaption>${cap}</figcaption></figure>`
+        : `<figure class="pfig"><div class="missing"><i class="fa-regular fa-image mr-1"></i>${cap}<br>사진이 아직 없어요. 논제 수정에서 붙일 수 있어요.</div></figure>`;
+}
+function zoomImg(el) { if (!el.src) return; $('zoomImg').src = el.src; $('zoomView').classList.remove('hidden'); }
+
+// ── 그림 저장: 이 기기(IndexedDB) + Firebase(그림마다 문서 하나) ──
+const imgCache = new Map();
+let imgRemoteResolve; const imgRemoteReady = new Promise(r => { imgRemoteResolve = r; window._imgRemoteReady = r; });
+const remoteImg = () => Promise.race([imgRemoteReady.then(() => window._imgRemote), new Promise(r => setTimeout(() => r(window._imgRemote || null), 6000))]);
+const idb = (() => {
+    let dbp = null;
+    const open = () => dbp || (dbp = new Promise((res, rej) => {
+        const r = indexedDB.open('essay_images', 1);
+        r.onupgradeneeded = () => r.result.createObjectStore('img');
+        r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+    }));
+    const run = async (mode, fn) => { const db = await open(); return new Promise((res, rej) => { const t = db.transaction('img', mode); const rq = fn(t.objectStore('img')); t.oncomplete = () => res(rq.result); t.onerror = () => rej(t.error); }); };
+    const safe = f => (...a) => f(...a).catch(() => undefined);
+    return { get: safe(k => run('readonly', st => st.get(k))), put: safe((k, v) => run('readwrite', st => st.put(v, k))), del: safe(k => run('readwrite', st => st.delete(k))), keys: safe(() => run('readonly', st => st.getAllKeys())) };
+})();
+async function getImage(id) {
+    if (imgCache.has(id)) return imgCache.get(id);
+    const rec = await idb.get(id);
+    if (rec && rec.data) { imgCache.set(id, rec.data); return rec.data; }
+    const r = await remoteImg();
+    if (r) { try { const data = await r.get(id); if (data) { imgCache.set(id, data); idb.put(id, { data, synced: true }); return data; } } catch (e) {} }
+    return null;
+}
+async function putImage(id, data) {
+    imgCache.set(id, data);
+    await idb.put(id, { data, synced: false });
+    const r = await remoteImg(); if (!r) return false;
+    try { await r.put(id, data); await idb.put(id, { data, synced: true }); return true; } catch (e) { return false; }
+}
+async function uploadPendingImages() {
+    const r = await remoteImg(); if (!r) return;
+    for (const k of (await idb.keys()) || []) {
+        const rec = await idb.get(k);
+        if (rec && rec.data && !rec.synced) { try { await r.put(k, rec.data); await idb.put(k, { data: rec.data, synced: true }); } catch (e) { return; } }
+    }
+}
+function imageInUse(id) { return state.topics.some(t => (t.images || []).some(x => x.id === id)); }
+async function dropImageIfUnused(id) {
+    if (imageInUse(id)) return;
+    imgCache.delete(id); idb.del(id);
+    const r = await remoteImg(); if (r) r.del(id).catch(() => {});
+}
+// 화면에 생긴 <img data-img>에 그림을 채움
+function hydrateImages(root = document) {
+    root.querySelectorAll('img[data-img]:not([src]):not([data-loading])').forEach(async el => {
+        el.dataset.loading = '1';
+        const data = await getImage(el.dataset.img);
+        if (data) el.src = data; else { el.alt = '그림을 불러오지 못했어요 (다른 기기에서 아직 올라가지 않았을 수 있어요)'; el.removeAttribute('data-img'); }
+        delete el.dataset.loading;
+    });
+}
+new MutationObserver(() => hydrateImages()).observe(document.body, { childList: true, subtree: true });
+// 사진 줄이기: 긴 변 1600px, 문서 1MB 제한 안으로
+function shrinkImage(file) {
+    return new Promise((resolve, reject) => {
+        const url = URL.createObjectURL(file), img = new Image();
+        img.onload = () => {
+            URL.revokeObjectURL(url);
+            let side = 1600, q = 0.85, data;
+            for (let k = 0; k < 8; k++) {
+                const f = Math.min(1, side / Math.max(img.width, img.height));
+                const c = document.createElement('canvas'); c.width = Math.round(img.width * f); c.height = Math.round(img.height * f);
+                const ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height); ctx.drawImage(img, 0, 0, c.width, c.height);
+                data = c.toDataURL('image/jpeg', q);
+                if (data.length < 700000) break;
+                if (q > 0.6) q -= 0.1; else side = Math.round(side * 0.8);
+            }
+            resolve(data);
+        };
+        img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('사진을 읽을 수 없어요.')); };
+        img.src = url;
+    });
+}
+// 그림 칸 목록 (논제 수정·사진으로 넣기 공용): 제시문의 [[그림 N]] 자리 + 붙인 그림
+function imgSlotsHtml(labels, images, ns) {
+    const all = [...new Set([...labels, ...images.map(x => normLabel(x.label))])].sort((a, b) => (parseInt(a.replace(/\D/g, '')) || 0) - (parseInt(b.replace(/\D/g, '')) || 0));
+    if (!all.length) return '';
+    return all.map(l => {
+        const img = images.find(x => normLabel(x.label) === l), inText = labels.includes(l);
+        return `<div class="border ${img ? 'border-slate-200' : 'border-dashed border-amber-300 bg-amber-50/50'} rounded-xl p-2 text-xs">
+            <div class="flex items-center gap-1 mb-1.5"><b class="flex-1 text-slate-700">${escapeHtml(l)}</b>
+                ${!inText ? `<span class="text-[10px] text-amber-600" title="제시문에 [[${escapeHtml(l)}]] 표시가 없어 제시문 끝에 보여요">본문에 자리 없음</span>` : ''}
+                ${img ? `<button type="button" onclick="${ns}RemoveImg('${escapeHtml(l)}')" class="w-6 h-6 rounded hover:bg-rose-50 text-slate-400 hover:text-rose-600" title="그림 빼기"><i class="fa-solid fa-xmark"></i></button>` : ''}</div>
+            ${img ? `<img data-img="${img.id}" class="w-full h-24 object-contain bg-white rounded border border-slate-100" onclick="zoomImg(this)" alt="">`
+                  : `<label class="flex flex-col items-center justify-center h-24 rounded bg-white border border-amber-200 text-amber-700 font-bold cursor-pointer hover:bg-amber-50"><i class="fa-solid fa-camera text-base mb-1"></i>사진 붙이기<input type="file" accept="image/*" class="hidden" onchange="${ns}PickImg(event, '${escapeHtml(l)}')"></label>`}
+        </div>`;
+    }).join('');
+}
+function nextFigLabel(labels, images) { let n = 1; const used = new Set([...labels, ...images.map(x => normLabel(x.label))]); while (used.has('그림 ' + n)) n++; return '그림 ' + n; }
+
 // ── 논제 화면 ──
 function conditionChips(t) {
     const out = [];
@@ -660,7 +826,7 @@ function conditionChips(t) {
 function promptHtml(t, compact) {
     return `<div class="space-y-4">
         ${!compact ? '' : `<div class="text-lg font-extrabold text-slate-800">${escapeHtml(t.title)}</div><div class="flex flex-wrap gap-1.5">${conditionChips(t)}</div>`}
-        ${t.passage ? `<div><div class="text-[11px] font-extrabold text-slate-400 mb-1.5">제시문</div><div class="passage serif text-[15px] text-slate-800 bg-slate-50 border border-slate-200 rounded-xl p-4">${escapeHtml(t.passage)}</div></div>` : ''}
+        ${t.passage || (t.images || []).length ? `<div><div class="text-[11px] font-extrabold text-slate-400 mb-1.5">제시문</div><div class="passage serif text-[15px] text-slate-800 bg-slate-50 border border-slate-200 rounded-xl p-4">${passageHtml(t.passage, t.images)}</div></div>` : ''}
         <div><div class="text-[11px] font-extrabold text-slate-400 mb-1.5">문항</div><div class="text-[15px] font-bold text-slate-900 bg-teal-50 border-l-4 border-teal-500 rounded-r-xl p-4 leading-7 whitespace-pre-wrap">${escapeHtml(t.question || '(문항이 비어 있어요)')}</div></div>
     </div>`;
 }
@@ -691,6 +857,7 @@ function renderTopic() {
 
 // ── 논제 편집 ──
 let editingTopicId = null;
+let editImgs = [];  // 수정 중인 논제의 그림 [{id, label}]
 function editTopic(id) {
     editingTopicId = id;
     const t = id ? topicById(id) : {};
@@ -699,11 +866,32 @@ function editTopic(id) {
     $('tPassage').value = t.passage || ''; $('tQuestion').value = t.question || '';
     $('tMin').value = t.minChars || ''; $('tMax').value = t.maxChars || ''; $('tTime').value = t.timeLimit || '';
     $('tGuide').value = t.guide || ''; $('tSource').value = t.source || '';
+    editImgs = JSON.parse(JSON.stringify(t.images || [])); renderTopicImgs();
     $('catList').innerHTML = categories().map(c => `<option value="${escapeHtml(c)}">`).join('');
     $('topicModal').classList.remove('hidden');
     closeSidebar();
     setTimeout(() => $('tTitle').focus(), 50);
 }
+function renderTopicImgs() { $('tImgList').innerHTML = imgSlotsHtml(figLabels($('tPassage').value), editImgs, 'topic'); }
+$('tPassage').addEventListener('input', () => { clearTimeout(window._tiT); window._tiT = setTimeout(renderTopicImgs, 400); });
+async function addTopicImage(e, label) {
+    const file = e.target.files[0]; e.target.value = ''; if (!file) return;
+    let data; try { data = await shrinkImage(file); } catch (err) { uiAlert(err.message); return; }
+    const labels = figLabels($('tPassage').value);
+    if (!label) {
+        label = nextFigLabel(labels, editImgs);
+        // 새 그림이면 제시문 커서 자리(없으면 끝)에 [[그림 N]] 표시를 넣음
+        const ta = $('tPassage'), v = ta.value, at = document.activeElement === ta ? ta.selectionEnd : v.length;
+        const before = v.slice(0, at), after = v.slice(at);
+        ta.value = before + (before && !before.endsWith('\n') ? '\n' : '') + `[[${label}]] ` + (after && !after.startsWith('\n') ? '\n' : '') + after;
+    }
+    const id = uid();
+    imgCache.set(id, data); idb.put(id, { data, synced: false });
+    editImgs = editImgs.filter(x => normLabel(x.label) !== label).concat({ id, label, pending: true });
+    renderTopicImgs();
+}
+const topicPickImg = (e, label) => addTopicImage(e, label);
+function topicRemoveImg(label) { editImgs = editImgs.filter(x => normLabel(x.label) !== label); renderTopicImgs(); }
 function closeTopicModal() { $('topicModal').classList.add('hidden'); editingTopicId = null; if (pendingRemote) applyMerged(mergeStates(state, lastRemote || pendingRemote)); }
 async function saveTopicModal() {
     const title = $('tTitle').value.trim(), question = $('tQuestion').value.trim();
@@ -711,11 +899,15 @@ async function saveTopicModal() {
     let minC = parseInt($('tMin').value) || 0, maxC = parseInt($('tMax').value) || 0;
     if (minC && maxC && minC > maxC) [minC, maxC] = [maxC, minC];
     const data = { title: title || question.slice(0, 30), category: $('tCat').value.trim(), passage: $('tPassage').value.replace(/\s+$/, ''), question,
-        minChars: minC, maxChars: maxC, timeLimit: parseInt($('tTime').value) || 0, guide: $('tGuide').value.trim(), source: $('tSource').value.trim() };
+        minChars: minC, maxChars: maxC, timeLimit: parseInt($('tTime').value) || 0, guide: $('tGuide').value.trim(), source: $('tSource').value.trim(),
+        images: editImgs.map(({ id, label }) => ({ id, label })) };
     let id = editingTopicId;
+    const oldImgs = id ? (topicById(id).images || []) : [];
     if (id) Object.assign(topicById(id), data);
     else { id = uid(); state.topics.push({ id, createdAt: Date.now(), ...data }); }
     save();
+    saveNewImages(editImgs.filter(x => x.pending));
+    oldImgs.forEach(x => dropImageIfUnused(x.id));
     $('topicModal').classList.add('hidden'); editingTopicId = null;
     openTopic(id);
 }
@@ -725,6 +917,7 @@ async function deleteTopic(id) {
     state.topics = state.topics.filter(x => x.id !== id);
     state.answers = state.answers.filter(a => a.topicId !== id);
     save(); goHome();
+    (t.images || []).forEach(x => dropImageIfUnused(x.id));
 }
 
 // ── 교재 사진으로 논제 넣기 (다른 AI에서 사진 인식 → JSON 붙여넣기) ──
@@ -733,7 +926,14 @@ const IMPORT_PROMPT = `첨부한 사진은 편입 논술 교재에 실린 논술
 규칙
 1. 제시문과 문항은 사진의 원문을 한 글자도 바꾸지 말고 그대로 옮기세요. 요약·번역·맞춤법 수정 금지. 영어 제시문은 영어 그대로.
 2. [가], [나], (A), <제시문 1> 같은 표시는 그대로 두고, 제시문 사이와 문단 사이는 빈 줄(\\n\\n)로 나누세요.
-3. 표·그래프·그림은 [표] 또는 [그림] 뒤에 내용을 글로 옮기세요. 밑줄·빈칸·기호(㉠, ⓐ 등)도 그대로 표시하세요.
+3. 표는 그 자리에 아래 형식으로 옮기세요. 한 줄에 한 행, 칸은 | 로 나누고, 첫 행이 머리글이면 둘째 줄에 |---|---| 를 넣으세요. 숫자와 단위는 그대로.
+   [표 1] 표 제목
+   | 구분 | 2010년 | 2020년 |
+   |---|---|---|
+   | A국 | 30.5 | 55.2 |
+   그래프·그림·사진·지도·만화는 그 자리에 한 줄로 [[그림 1]], [[그림 2]] 처럼 번호를 쓰고, 같은 줄에 무엇을 나타내는지 설명하세요. 그래프라면 제목, 가로축·세로축, 단위, 읽을 수 있는 주요 수치를 적으세요.
+   예: [[그림 1]] 연도별 1인 가구 비율(%) 꺾은선 그래프. 2000년 15.5, 2010년 23.9, 2020년 31.7
+   밑줄·빈칸·기호(㉠, ⓐ 등)도 그대로 표시하세요.
 4. 사진이 여러 장이면 순서대로 이어 붙이고, 페이지 번호·머리말·꼬리말·해설 광고는 빼세요.
 5. 문항이 여러 개면 questions에 하나씩 넣으세요. 각 문항의 분량 조건을 숫자로 바꾸세요.
    - "600±50자" → minChars 550, maxChars 650
@@ -758,8 +958,9 @@ const IMPORT_PROMPT = `첨부한 사진은 편입 논술 교재에 실린 논술
   "guide": ""
 }`;
 let importItems = [];
+let importImgs = [];  // [{id, label}] 사진으로 넣기에서 붙인 그림
 function openImport() {
-    importItems = [];
+    importItems = []; importImgs = [];
     $('importPaste').value = ''; $('importErr').classList.add('hidden');
     $('importPromptBox').classList.add('hidden');
     renderImportPreview();
@@ -813,7 +1014,28 @@ function renderImportPreview() {
                     ${t.passage ? `<div class="text-xs text-slate-500 mt-2 serif line-clamp-3 whitespace-pre-wrap">${escapeHtml(t.passage.slice(0, 300))}</div><div class="text-[11px] text-slate-400 mt-0.5">제시문 ${t.passage.length.toLocaleString()}자</div>` : '<div class="text-xs text-amber-600 mt-2">제시문이 비어 있어요</div>'}
                     <div class="text-xs font-bold text-slate-700 mt-2 bg-white border-l-2 border-teal-500 px-2 py-1">${escapeHtml(t.question || '(문항이 비어 있어요)')}</div>
                 </div>
-            </div></label>`).join('');
+            </div></label>`).join('') + (() => {
+            const labels = [...new Set(importItems.filter(x => x.on).flatMap(x => figLabels(x.passage)))];
+            if (!labels.length && !importImgs.length) return '';
+            return `<div class="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                <div class="text-xs font-extrabold text-amber-800 mb-1"><i class="fa-solid fa-chart-column mr-1"></i>그래프·그림 ${labels.length}개</div>
+                <p class="text-[11px] text-amber-900/80 mb-2">교재의 그래프·그림 부분만 찍은(또는 잘라 낸) 사진을 붙이면 제시문 그 자리에 보여요. 지금 안 붙여도 나중에 논제 수정에서 붙일 수 있어요.</p>
+                <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">${imgSlotsHtml(labels, importImgs, 'imp')}</div></div>`;
+        })();
+}
+async function impPickImg(e, label) {
+    const file = e.target.files[0]; e.target.value = ''; if (!file) return;
+    let data; try { data = await shrinkImage(file); } catch (err) { uiAlert(err.message); return; }
+    const id = uid(); imgCache.set(id, data); idb.put(id, { data, synced: false });
+    importImgs = importImgs.filter(x => normLabel(x.label) !== label).concat({ id, label, pending: true });
+    renderImportPreview();
+}
+function impRemoveImg(label) { importImgs = importImgs.filter(x => normLabel(x.label) !== label); renderImportPreview(); }
+// 새로 붙인 그림을 이 기기와 Firebase에 저장
+async function saveNewImages(list) {
+    let fail = 0;
+    for (const x of list) { const data = imgCache.get(x.id); if (data && !(await putImage(x.id, data))) fail++; }
+    if (fail) toast(`그림 ${fail}개는 아직 이 기기에만 저장됐어요 (다음에 다시 올려요)`);
 }
 $('importPaste').addEventListener('input', () => {
     const v = $('importPaste').value.trim(), err = $('importErr');
@@ -825,9 +1047,15 @@ $('importPaste').addEventListener('input', () => {
 function saveImport() {
     const pick = importItems.filter(x => x.on); if (!pick.length) return;
     let firstId = null; const now = Date.now();
-    pick.forEach((t, k) => { const { on, ...data } = t; const id = uid(); firstId = firstId || id; state.topics.push({ id, createdAt: now + k, ...data }); });
+    pick.forEach((t, k) => {
+        const { on, ...data } = t; const id = uid(); firstId = firstId || id;
+        const labels = figLabels(data.passage);
+        data.images = importImgs.filter(x => labels.includes(normLabel(x.label))).map(({ id, label }) => ({ id, label }));
+        state.topics.push({ id, createdAt: now + k, ...data });
+    });
     save();
-    $('importModal').classList.add('hidden'); importItems = [];
+    saveNewImages(importImgs.filter(x => imageInUse(x.id)));
+    $('importModal').classList.add('hidden'); importItems = []; importImgs = [];
     toast(`논제 ${pick.length}개를 저장했어요`);
     openTopic(firstId);
 }
@@ -1256,7 +1484,7 @@ function setAiTab(t) {
     $('aiTabPaste').classList.toggle('hidden', t !== 'paste');
 }
 $('aiTabs').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setAiTab(b.dataset.tab); });
-function openAiModal() { syncAiKeyUI(); setAiTab(aiTab); $('aiStatus').classList.add('hidden'); $('aiPasteText').value = ''; $('aiRunBtn').disabled = false; $('aiModal').classList.remove('hidden'); }
+function openAiModal() { const a = answerById(ui.answerId); $('aiImgNote').classList.toggle('hidden', !(a && (topicById(a.topicId)?.images || []).length)); syncAiKeyUI(); setAiTab(aiTab); $('aiStatus').classList.add('hidden'); $('aiPasteText').value = ''; $('aiRunBtn').disabled = false; $('aiModal').classList.remove('hidden'); }
 function closeAiModal() { $('aiModal').classList.add('hidden'); }
 
 function buildAiPrompt(a) {
@@ -1266,7 +1494,7 @@ function buildAiPrompt(a) {
 
 [논제 제목] ${t.title}
 [제시문]
-${t.passage || '(없음)'}
+${t.passage || '(없음)'}${(t.images || []).length ? `\n(제시문의 [[그림 N]] 자리에는 그래프·그림이 있습니다. 첨부한 이미지 ${t.images.length}장을 그림 번호 순서대로 참고하세요: ${t.images.map(x => x.label).join(', ')})` : ''}
 [문항]
 ${t.question}
 ${cond ? `[조건] ${cond}\n` : ''}${t.guide ? `[출제자 채점 포인트]\n${t.guide}\n` : ''}${a.outline.trim() ? `[학생 개요]\n${a.outline}\n` : ''}
@@ -1319,11 +1547,13 @@ async function runAiReview() {
     const btn = $('aiRunBtn'), st = $('aiStatus');
     btn.disabled = true; st.classList.remove('hidden'); st.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i>답안을 읽고 첨삭하는 중이에요... (20~40초)';
     try {
+        const imgParts = [];
+        for (const x of (topicById(a.topicId).images || [])) { const d = await getImage(x.id); if (d) imgParts.push({ inline_data: { mime_type: 'image/jpeg', data: d.split(',')[1] } }); }
         let lastErr;
         for (const model of GEMINI_MODELS) {
             const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ contents: [{ parts: [{ text: buildAiPrompt(a) }] }], generationConfig: { temperature: 0.3, responseMimeType: 'application/json', maxOutputTokens: 16384 } })
+                body: JSON.stringify({ contents: [{ parts: [{ text: buildAiPrompt(a) }, ...imgParts] }], generationConfig: { temperature: 0.3, responseMimeType: 'application/json', maxOutputTokens: 16384 } })
             });
             const data = await res.json().catch(() => ({}));
             if (res.ok) { storeAi(parseAiJson((data.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join(''))); return; }
@@ -1348,9 +1578,11 @@ function applyPastedAi() {
 }
 
 // ── 백업 ──
-function exportJSON() {
+async function exportJSON() {
     const d = new Date(); const ds = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-    const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+    const images = {};
+    for (const t of state.topics) for (const x of t.images || []) if (!images[x.id]) { const data = await getImage(x.id); if (data) images[x.id] = data; }
+    const blob = new Blob([JSON.stringify({ ...state, images }, null, 2)], { type: 'application/json' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `논술연습_백업_${ds}.json`; a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
@@ -1359,7 +1591,8 @@ function importJSON(e) {
     const reader = new FileReader();
     reader.onload = async () => {
         try {
-            const data = normalize(JSON.parse(reader.result));
+            const raw = JSON.parse(reader.result);
+            const data = normalize(raw);
             if (!await uiConfirm(`백업을 불러올까요?\n논제 ${data.topics.length}개, 답안 ${data.answers.length}개\n현재 데이터는 백업 내용으로 바뀝니다.`, '불러오기')) return;
             const keep = new Set(allItems(data).map(x => x.id));
             const now = Date.now();
@@ -1367,6 +1600,7 @@ function importJSON(e) {
             for (const id of keep) delete data.deleted[id];
             state = data; snap = new Map();
             save(); goHome();
+            if (raw.images && typeof raw.images === 'object') saveNewImages(Object.entries(raw.images).map(([id, d]) => { imgCache.set(id, d); return { id }; }));
         } catch (err) { uiAlert('백업 파일을 읽지 못했어요.'); }
     };
     reader.readAsText(file);
@@ -1386,6 +1620,7 @@ document.addEventListener('keydown', e => {
 
 loadLocal();
 render();
+uploadPendingImages();
 </script>
 </body>
 </html>
