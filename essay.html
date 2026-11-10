@@ -246,6 +246,14 @@
     </div>
 </div>
 
+<!-- 확인 창 (브라우저 기본 창 대신) -->
+<div id="dlg" class="hidden fixed inset-0 bg-black/60 z-[500] flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm animate-fade-in">
+        <p id="dlgMsg" class="text-sm text-slate-700 whitespace-pre-wrap leading-6"></p>
+        <div id="dlgBtns" class="mt-5 flex flex-col gap-2"></div>
+    </div>
+</div>
+
 <!-- Firebase (영단어장·오답노트와 같은 프로젝트, 별도 문서에 저장) -->
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
@@ -328,6 +336,24 @@ function dayKey(ts) { const d = new Date(ts); return `${d.getFullYear()}-${d.get
 function fmtDur(sec) { sec = Math.max(0, Math.round(sec || 0)); const m = Math.floor(sec / 60), s = sec % 60; return m >= 60 ? `${Math.floor(m/60)}시간 ${m%60}분` : `${m}분 ${String(s).padStart(2,'0')}초`; }
 function clock(sec) { const neg = sec < 0; sec = Math.abs(Math.floor(sec)); const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60; return (neg ? '+' : '') + (h ? h + ':' + String(m).padStart(2,'0') : String(m).padStart(2,'0')) + ':' + String(s).padStart(2,'0'); }
 function scoreColor(v) { return v >= 85 ? '#0d9488' : v >= 70 ? '#2563eb' : v >= 55 ? '#d97706' : '#e11d48'; }
+
+// 확인 창: buttons = [{label, value, style}] → 고른 value (바깥 누르거나 Esc면 null)
+let dlgResolve = null;
+function uiDialog(msg, buttons) {
+    if (dlgResolve) dlgResolve(null);
+    $('dlgMsg').textContent = msg;
+    const styles = { primary: 'bg-teal-600 hover:bg-teal-500 text-white', danger: 'bg-rose-600 hover:bg-rose-500 text-white', plain: 'bg-slate-100 hover:bg-slate-200 text-slate-700' };
+    $('dlgBtns').innerHTML = buttons.map((b, i) => `<button data-i="${i}" class="w-full py-2.5 rounded-xl text-sm font-bold ${styles[b.style || 'plain']}">${escapeHtml(b.label)}</button>`).join('');
+    $('dlg').classList.remove('hidden');
+    return new Promise(res => {
+        dlgResolve = v => { dlgResolve = null; $('dlg').classList.add('hidden'); res(v); };
+        $('dlgBtns').querySelectorAll('button').forEach(el => el.onclick = () => dlgResolve(buttons[+el.dataset.i].value));
+        setTimeout(() => $('dlgBtns').querySelector('button')?.focus(), 30);
+    });
+}
+const uiAlert = msg => uiDialog(msg, [{ label: '확인', value: true, style: 'primary' }]);
+const uiConfirm = (msg, ok = '확인', style = 'primary') => uiDialog(msg, [{ label: ok, value: true, style }, { label: '취소', value: false }]).then(v => !!v);
+document.addEventListener('click', e => { if (e.target.id === 'dlg' && dlgResolve) dlgResolve(null); });
 
 window.showSync = function (msg, color) {
     ['syncDot', 'syncDot2'].forEach(id => { const el = $(id); if (el) el.style.background = color; });
@@ -625,9 +651,9 @@ function editTopic(id) {
     setTimeout(() => $('tTitle').focus(), 50);
 }
 function closeTopicModal() { $('topicModal').classList.add('hidden'); editingTopicId = null; if (pendingRemote) applyMerged(mergeStates(state, lastRemote || pendingRemote)); }
-function saveTopicModal() {
+async function saveTopicModal() {
     const title = $('tTitle').value.trim(), question = $('tQuestion').value.trim();
-    if (!title && !question) { alert('제목이나 문항을 입력해 주세요.'); return; }
+    if (!title && !question) { uiAlert('제목이나 문항을 입력해 주세요.'); return; }
     let minC = parseInt($('tMin').value) || 0, maxC = parseInt($('tMax').value) || 0;
     if (minC && maxC && minC > maxC) [minC, maxC] = [maxC, minC];
     const data = { title: title || question.slice(0, 30), category: $('tCat').value.trim(), passage: $('tPassage').value.replace(/\s+$/, ''), question,
@@ -639,9 +665,9 @@ function saveTopicModal() {
     $('topicModal').classList.add('hidden'); editingTopicId = null;
     openTopic(id);
 }
-function deleteTopic(id) {
+async function deleteTopic(id) {
     const t = topicById(id), n = answersOf(id).length;
-    if (!confirm(`'${t.title}' 논제를 지울까요?${n ? `\n이 논제의 답안 ${n}개도 함께 지워져요.` : ''}`)) return;
+    if (!await uiConfirm(`'${t.title}' 논제를 지울까요?${n ? `\n이 논제의 답안 ${n}개도 함께 지워져요.` : ''}`, '지우기', 'danger')) return;
     state.topics = state.topics.filter(x => x.id !== id);
     state.answers = state.answers.filter(a => a.topicId !== id);
     save(); goHome();
@@ -654,10 +680,14 @@ function startWriting(topicId, base) {
     openWriting(a.id);
 }
 function resumeWriting(id) { openWriting(id); }
-function rewriteFrom(id) {
+async function rewriteFrom(id) {
     const a = answerById(id);
-    const mode = confirm('이 답안을 바탕으로 고쳐 쓸까요?\n\n[확인] 이전 답안 내용을 불러와서 고쳐 쓰기\n[취소] 빈 종이에 처음부터 다시 쓰기');
-    startWriting(a.topicId, mode ? a : { outline: a.outline, id: a.id });
+    const mode = await uiDialog('어떻게 다시 쓸까요?', [
+        { label: '이 답안을 불러와서 고쳐 쓰기', value: 'edit', style: 'primary' },
+        { label: '빈 종이에 처음부터 다시 쓰기 (개요만 가져옴)', value: 'fresh' },
+        { label: '취소', value: null }]);
+    if (!mode) return;
+    startWriting(a.topicId, mode === 'edit' ? a : { outline: a.outline, id: a.id });
 }
 function curWriting() { return writing && answerById(writing.answerId); }
 function openWriting(id) {
@@ -759,14 +789,15 @@ function closeWriting() {
     $('writeOverlay').classList.add('hidden');
     if (pendingRemote) applyMerged(mergeStates(state, lastRemote || pendingRemote)); else render();
 }
-function submitWriting() {
+async function submitWriting() {
     const a = curWriting(); if (!a) return;
     const t = topicById(a.topicId), c = countText($('essayInput').value);
-    if (!c.withSp) { alert('답안이 비어 있어요.'); return; }
+    if (!c.withSp) { uiAlert('답안이 비어 있어요.'); return; }
     const warn = [];
     if (t.minChars && c.withSp < t.minChars) warn.push(`최소 분량보다 ${t.minChars - c.withSp}자 적어요.`);
     if (t.maxChars && c.withSp > t.maxChars) warn.push(`최대 분량보다 ${c.withSp - t.maxChars}자 많아요.`);
-    if (!confirm((warn.length ? warn.join('\n') + '\n\n' : '') + '답안을 제출할까요? 제출 뒤에도 고쳐 쓰기로 다시 쓸 수 있어요.')) return;
+    if (!await uiConfirm((warn.length ? warn.join('\n') + '\n\n' : '') + '답안을 제출할까요? 제출 뒤에도 고쳐 쓰기로 다시 쓸 수 있어요.', '제출하기')) return;
+    if (!curWriting() || curWriting() !== a) return;
     a.text = $('essayInput').value; a.outline = $('outlineInput').value;
     a.duration = Math.round(elapsed()); a.status = 'done'; a.submittedAt = Date.now(); a.updatedAt = Date.now();
     save();
@@ -904,8 +935,8 @@ function renderAnswer() {
     });
 }
 function toggleCheck(id, i, v) { const a = answerById(id); a.check[i] = v; for (let k = 0; k < SELF_CHECK.length; k++) a.check[k] = !!a.check[k]; save(); }
-function deleteAnswer(id) {
-    if (!confirm('이 답안을 지울까요?')) return;
+async function deleteAnswer(id) {
+    if (!await uiConfirm('이 답안을 지울까요?', '지우기', 'danger')) return;
     const a = answerById(id);
     state.answers = state.answers.filter(x => x.id !== id); save();
     openTopic(a.topicId);
@@ -1050,7 +1081,7 @@ function storeAi(result) {
     setTimeout(() => $('aiSection')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
 }
 async function runAiReview() {
-    const key = getAiKey(); if (!key) { alert('먼저 Gemini API 키를 저장해 주세요.'); return; }
+    const key = getAiKey(); if (!key) { uiAlert('먼저 Gemini API 키를 저장해 주세요.'); return; }
     const a = answerById(ui.answerId); if (!a) return;
     const btn = $('aiRunBtn'), st = $('aiStatus');
     btn.disabled = true; st.classList.remove('hidden'); st.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i>답안을 읽고 첨삭하는 중이에요... (20~40초)';
@@ -1076,11 +1107,11 @@ async function copyAiPrompt() {
     const a = answerById(ui.answerId); if (!a) return;
     const text = buildAiPrompt(a);
     try { await navigator.clipboard.writeText(text); toast('요청문을 복사했어요'); }
-    catch (e) { $('aiPasteText').value = text; $('aiPasteText').select(); alert('자동 복사가 안 돼서 아래 칸에 넣었어요. 직접 복사한 뒤 칸을 비우고 결과를 붙여넣어 주세요.'); }
+    catch (e) { $('aiPasteText').value = text; $('aiPasteText').select(); uiAlert('자동 복사가 안 돼서 아래 칸에 넣었어요. 직접 복사한 뒤 칸을 비우고 결과를 붙여넣어 주세요.'); }
 }
 function applyPastedAi() {
     try { storeAi(parseAiJson($('aiPasteText').value)); }
-    catch (e) { alert('결과를 읽지 못했어요. AI가 준 JSON 전체를 붙여넣었는지 확인해 주세요.\n(' + e.message + ')'); }
+    catch (e) { uiAlert('결과를 읽지 못했어요. AI가 준 JSON 전체를 붙여넣었는지 확인해 주세요.\n(' + e.message + ')'); }
 }
 
 // ── 백업 ──
@@ -1093,17 +1124,17 @@ function exportJSON() {
 function importJSON(e) {
     const file = e.target.files[0]; e.target.value = ''; if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
         try {
             const data = normalize(JSON.parse(reader.result));
-            if (!confirm(`백업을 불러올까요?\n논제 ${data.topics.length}개, 답안 ${data.answers.length}개\n현재 데이터는 백업 내용으로 바뀝니다.`)) return;
+            if (!await uiConfirm(`백업을 불러올까요?\n논제 ${data.topics.length}개, 답안 ${data.answers.length}개\n현재 데이터는 백업 내용으로 바뀝니다.`, '불러오기')) return;
             const keep = new Set(allItems(data).map(x => x.id));
             const now = Date.now();
             for (const id of snap.keys()) if (!keep.has(id)) data.deleted[id] = now;
             for (const id of keep) delete data.deleted[id];
             state = data; snap = new Map();
             save(); goHome();
-        } catch (err) { alert('백업 파일을 읽지 못했어요.'); }
+        } catch (err) { uiAlert('백업 파일을 읽지 못했어요.'); }
     };
     reader.readAsText(file);
 }
@@ -1111,7 +1142,8 @@ function importJSON(e) {
 // ── 단축키 ──
 document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
-        if (!$('aiModal').classList.contains('hidden')) closeAiModal();
+        if (dlgResolve) dlgResolve(null);
+        else if (!$('aiModal').classList.contains('hidden')) closeAiModal();
         else if (!$('topicModal').classList.contains('hidden')) closeTopicModal();
         else if (writing && !$('writePrompt').classList.contains('mhide') && window.innerWidth < 900) showPromptMobile(false);
     }
