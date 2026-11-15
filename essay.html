@@ -345,7 +345,7 @@
     const DATA_DOC = doc(db, 'wordbook', 'essay');
     window._saveToFirestore = async (data) => {
         try { window.showSync('저장 중...','#facc15'); await setDoc(DATA_DOC, data); window.showSync('동기화됨','#34d399'); }
-        catch(e) { window.showSync('저장 실패','#f87171'); }
+        catch(e) { if (e && e.code === 'permission-denied') window._syncDenied(); else window.showSync('저장 실패','#f87171'); }
     };
     const imgDoc = id => doc(db, 'wordbook', 'essayimg_' + id);
     window._imgRemote = {
@@ -357,7 +357,7 @@
     onSnapshot(DATA_DOC, snap => {
         window.showSync('동기화됨','#34d399');
         window._onRemote(snap.exists() ? snap.data() : null);
-    }, () => { window.showSync('오프라인','#f87171'); });
+    }, e => { if (e && e.code === 'permission-denied') window._syncDenied(); else window.showSync('오프라인','#f87171'); });
 </script>
 
 <script>
@@ -443,6 +443,13 @@ window.showSync = function (msg, color) {
     const t = $('syncToast'), m = $('syncMsg');
     if (m) m.textContent = msg;
     if (t) { t.classList.remove('hidden'); clearTimeout(window._tt); window._tt = setTimeout(() => t.classList.add('hidden'), 1500); }
+};
+// Firebase 규칙이 이 앱의 저장 위치를 막고 있을 때
+let syncDenied = false;
+window._syncDenied = function () {
+    syncDenied = true;
+    window.showSync('동기화 권한 없음', '#f87171');
+    if (ui.view === 'home' && !writing) renderHome();
 };
 function toast(msg) {
     const t = $('syncToast'); $('syncMsg').textContent = msg; $('syncDot').style.background = '#5eead4';
@@ -634,6 +641,7 @@ function renderHome() {
             <div class="text-xs font-bold text-teal-200">오늘도 한 편</div>
             <h1 class="text-xl sm:text-2xl font-extrabold mt-1">생각을 정리하고, 시간 안에 쓰고, 고쳐 쓰기</h1>
             <p class="text-sm text-teal-100/80 mt-2">개요 → 답안 → 자기 점검 → AI 첨삭 → 다시 쓰기 순서로 연습해 보세요.</p>
+            ${syncDenied ? `<div class="mt-3 bg-rose-500/20 border border-rose-300/40 rounded-xl px-3 py-2 text-xs text-rose-50"><i class="fa-solid fa-triangle-exclamation mr-1"></i><b>기기 간 동기화가 꺼져 있어요.</b> Firebase 보안 규칙이 논술 연습장의 저장 위치(wordbook/essay)를 막고 있어요. 지금 쓴 내용은 이 기기에만 저장돼요. 규칙을 고치면 자동으로 합쳐져요.</div>` : ''}
             <div class="flex flex-wrap gap-2 mt-4">
                 <button onclick="randomTopic()" class="bg-white text-slate-900 font-bold text-sm px-4 py-2 rounded-xl hover:bg-teal-50"><i class="fa-solid fa-shuffle mr-1"></i>아무 논제나 풀기</button>
                 <button onclick="openImport()" class="bg-white/10 hover:bg-white/20 font-bold text-sm px-4 py-2 rounded-xl"><i class="fa-solid fa-camera mr-1"></i>교재 사진으로 논제 넣기</button>
@@ -934,15 +942,17 @@ const IMPORT_PROMPT = `첨부한 사진은 편입 논술 교재에 실린 논술
    그래프·그림·사진·지도·만화는 그 자리에 한 줄로 [[그림 1]], [[그림 2]] 처럼 번호를 쓰고, 같은 줄에 무엇을 나타내는지 설명하세요. 그래프라면 제목, 가로축·세로축, 단위, 읽을 수 있는 주요 수치를 적으세요.
    예: [[그림 1]] 연도별 1인 가구 비율(%) 꺾은선 그래프. 2000년 15.5, 2010년 23.9, 2020년 31.7
    밑줄·빈칸·기호(㉠, ⓐ 등)도 그대로 표시하세요.
-4. 사진이 여러 장이면 순서대로 이어 붙이고, 페이지 번호·머리말·꼬리말·해설 광고는 빼세요.
+4. 사진이 여러 장이면 첨부 순서가 뒤섞여 있을 수 있으니, 페이지 번호와 제시문 기호((가)→(나)→(다)…) 순서대로 정렬해서 이어 붙이세요. 한 제시문이 여러 페이지에 걸치면 한 덩어리로 이어 쓰세요. 페이지 번호·머리말·꼬리말은 제시문에서 빼되, 꼬리말의 교재 이름은 source에 쓰세요.
 5. 문항이 여러 개면 questions에 하나씩 넣으세요. 각 문항의 분량 조건을 숫자로 바꾸세요.
    - "600±50자" → minChars 550, maxChars 650
    - "800자 내외" → minChars 720, maxChars 880 (±10%)
    - "1000자 이내" → minChars 0, maxChars 1000
+   - "1,000자"처럼 숫자만 있으면 → minChars 900, maxChars 1100 (±10%)
    - 분량 조건이 없으면 0
 6. 시험 시간이 적혀 있으면 timeLimit에 분 단위로, 없으면 0.
 7. 교재에 해설·예시 답안·채점 기준이 함께 보이면 guide에 핵심만 5줄 이내로 정리하고, 없으면 빈 문자열.
 8. 서로 다른 문제(제시문 묶음)가 여러 개 있으면 JSON 객체들의 배열로 주세요.
+9. 문항이 가리키는 제시문이 사진에 없거나(예: 문항은 (가)를 묻는데 (가) 페이지가 없음), 잘려서 못 읽은 부분이 있으면 notes에 적고, 그 자리에는 [사진 없음] 또는 [판독 불가]라고 쓰세요. 지어내지 마세요.
 
 반드시 JSON만 코드 블록 하나로 답하세요. 설명 문장은 쓰지 마세요.
 
@@ -955,7 +965,8 @@ const IMPORT_PROMPT = `첨부한 사진은 편입 논술 교재에 실린 논술
     { "label": "문항 1", "question": "문항 원문 그대로", "minChars": 0, "maxChars": 0 }
   ],
   "timeLimit": 0,
-  "guide": ""
+  "guide": "",
+  "notes": "빠진 페이지·판독 불가 부분 (없으면 빈 문자열)"
 }`;
 let importItems = [];
 let importImgs = [];  // [{id, label}] 사진으로 넣기에서 붙인 그림
@@ -988,7 +999,7 @@ function parseImport(text) {
         if (!o || typeof o !== 'object') return;
         const qs = Array.isArray(o.questions) && o.questions.length ? o.questions : [{ question: o.question || '', minChars: o.minChars, maxChars: o.maxChars }];
         const base = { title: String(o.title || '').trim() || '제목 없는 논제', category: String(o.category || '').trim(), source: String(o.source || '').trim(),
-            passage: String(o.passage || '').replace(/\s+$/, ''), timeLimit: num(o.timeLimit), guide: String(o.guide || '').trim() };
+            passage: String(o.passage || '').replace(/\s+$/, ''), timeLimit: num(o.timeLimit), guide: String(o.guide || '').trim(), notes: String(o.notes || '').trim() };
         qs.forEach((q, k) => {
             q = typeof q === 'string' ? { question: q } : (q || {});
             let minC = num(q.minChars), maxC = num(q.maxChars);
@@ -1011,6 +1022,7 @@ function renderImportPreview() {
                 <div class="flex-1 min-w-0">
                     <div class="text-sm font-extrabold text-slate-800">${escapeHtml(t.title)}</div>
                     <div class="flex flex-wrap gap-1 mt-1">${conditionChips(t)}</div>
+                    ${t.notes ? `<div class="text-xs bg-rose-50 border border-rose-200 text-rose-700 rounded-lg px-2 py-1.5 mt-2"><i class="fa-solid fa-triangle-exclamation mr-1"></i>${escapeHtml(t.notes)}</div>` : ''}
                     ${t.passage ? `<div class="text-xs text-slate-500 mt-2 serif line-clamp-3 whitespace-pre-wrap">${escapeHtml(t.passage.slice(0, 300))}</div><div class="text-[11px] text-slate-400 mt-0.5">제시문 ${t.passage.length.toLocaleString()}자</div>` : '<div class="text-xs text-amber-600 mt-2">제시문이 비어 있어요</div>'}
                     <div class="text-xs font-bold text-slate-700 mt-2 bg-white border-l-2 border-teal-500 px-2 py-1">${escapeHtml(t.question || '(문항이 비어 있어요)')}</div>
                 </div>
@@ -1048,7 +1060,7 @@ function saveImport() {
     const pick = importItems.filter(x => x.on); if (!pick.length) return;
     let firstId = null; const now = Date.now();
     pick.forEach((t, k) => {
-        const { on, ...data } = t; const id = uid(); firstId = firstId || id;
+        const { on, notes, ...data } = t; const id = uid(); firstId = firstId || id;
         const labels = figLabels(data.passage);
         data.images = importImgs.filter(x => labels.includes(normLabel(x.label))).map(({ id, label }) => ({ id, label }));
         state.topics.push({ id, createdAt: now + k, ...data });
