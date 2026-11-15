@@ -32,6 +32,11 @@
         .serif { font-family: 'Batang', 'Nanum Myeongjo', 'Noto Serif KR', 'AppleMyungjo', serif; }
         .passage { word-break: break-word; line-height: 1.9; }
         .passage .pt { white-space: pre-wrap; }
+        .passage .sec-label { font-weight: 800; color: #0f766e; }
+        .sec-anchor, .q-anchor { scroll-margin-top: 64px; }
+        .sec-nav { top: -20px; margin: 0 -20px; padding-left: 20px; padding-right: 20px; }
+        #mainScroll .sec-nav { top: 0; }
+        .sec-btn.on { background: #0f766e; border-color: #0f766e; color: #fff; }
         .ptable-wrap { overflow-x: auto; margin: 6px 0 10px; }
         .ptable { border-collapse: collapse; font-size: 0.9em; line-height: 1.5; min-width: 60%; background: #fff; font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; }
         .ptable th, .ptable td { border: 1px solid #94a3b8; padding: 4px 10px; text-align: center; white-space: nowrap; }
@@ -719,12 +724,59 @@ function passageHtml(passage, images) {
             out.push(figHtml(label, m[2], img));
             continue;
         }
+        const sec = secOf(l);
+        if (sec && !used.has('sec:' + sec)) {
+            used.add('sec:' + sec); flushText();
+            const head = l.match(SEC_RE)[0];
+            out.push(`<div class="pt sec-anchor" data-sec="${escapeHtml(sec)}"><span class="sec-label">${escapeHtml(head)}</span>${escapeHtml(l.slice(head.length))}</div>`);
+            continue;
+        }
         text.push(l);
     }
     flushText();
     imgs.filter(x => !used.has(normLabel(x.label))).forEach(x => out.push(figHtml(x.label, '', x)));
     return out.join('');
 }
+// 제시문 머리: '제시문 (가)', '(나) …', '[다] …', '<A>' 처럼 줄 앞에 붙은 기호
+const SEC_RE = /^\s*(제시문\s*)?[\(\[<〈【]\s*([가-힣]|[A-Za-z]|\d{1,2})\s*[\)\]>〉】]/;
+function secOf(line) {
+    const m = (line || '').match(SEC_RE); if (!m) return null;
+    const k = m[2];
+    if (m[1] || '가나다라마바사아자차카타파하'.includes(k) || /^[A-Z]$/.test(k) || /^\d{1,2}$/.test(k)) return k;
+    return null;
+}
+function passageSections(passage) {
+    const seen = []; (passage || '').split('\n').forEach(l => { if (FIG_RE.test(l)) return; const k = secOf(l); if (k && !seen.includes(k)) seen.push(k); });
+    return seen;
+}
+function secNavHtml(t) {
+    const secs = passageSections(t.passage);
+    if (!secs.length) return '';
+    const btn = (go, label) => `<button type="button" data-go="${escapeHtml(go)}" class="sec-btn shrink-0 text-xs font-bold px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-teal-400 hover:text-teal-700">${label}</button>`;
+    return `<nav class="sec-nav sticky z-10 flex items-center gap-1.5 overflow-x-auto py-2 bg-white/95 backdrop-blur border-b border-slate-200">
+        <span class="shrink-0 text-[11px] font-extrabold text-slate-400 mr-0.5">제시문</span>
+        ${secs.map(k => btn('sec:' + k, `(${escapeHtml(k)})`)).join('')}
+        <span class="shrink-0 w-px h-5 bg-slate-200 mx-1"></span>
+        ${btn('q', '문항')}
+    </nav>`;
+}
+document.addEventListener('click', e => {
+    const b = e.target.closest('[data-go]'); if (!b) return;
+    const root = b.closest('.prompt-root'); if (!root) return;
+    const go = b.dataset.go;
+    const el = go === 'q' ? root.querySelector('.q-anchor') : root.querySelector(`[data-sec="${CSS.escape(go.slice(4))}"]`);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+// 스크롤하면 지금 보고 있는 제시문 버튼에 표시
+document.addEventListener('scroll', e => {
+    const box = e.target; if (!(box instanceof Element)) return;
+    const root = box.querySelector('.prompt-root'); if (!root || !root.querySelector('.sec-nav')) return;
+    const nav = root.querySelector('.sec-nav'), lim = nav.getBoundingClientRect().bottom + 24;
+    let cur = null;
+    root.querySelectorAll('.sec-anchor, .q-anchor').forEach(a => { if (a.getBoundingClientRect().top <= lim) cur = a.classList.contains('q-anchor') ? 'q' : 'sec:' + a.dataset.sec; });
+    if (box.scrollTop + box.clientHeight >= box.scrollHeight - 4) cur = 'q';
+    nav.querySelectorAll('[data-go]').forEach(x => x.classList.toggle('on', x.dataset.go === cur));
+}, true);
 function figHtml(label, desc, img) {
     const cap = `<b>[${escapeHtml(label)}]</b>${desc ? ' ' + escapeHtml(desc) : ''}`;
     return img ? `<figure class="pfig"><img data-img="${img.id}" alt="${escapeHtml(label)}" onclick="zoomImg(this)"><figcaption>${cap}</figcaption></figure>`
@@ -831,11 +883,12 @@ function conditionChips(t) {
     if (t.source) out.push(`<span class="chip bg-amber-50 text-amber-700"><i class="fa-solid fa-book"></i>${escapeHtml(t.source)}</span>`);
     return out.join(' ');
 }
-function promptHtml(t, compact) {
-    return `<div class="space-y-4">
+function promptHtml(t, compact, nav) {
+    return `<div class="prompt-root space-y-4">
         ${!compact ? '' : `<div class="text-lg font-extrabold text-slate-800">${escapeHtml(t.title)}</div><div class="flex flex-wrap gap-1.5">${conditionChips(t)}</div>`}
+        ${nav ? secNavHtml(t) : ''}
         ${t.passage || (t.images || []).length ? `<div><div class="text-[11px] font-extrabold text-slate-400 mb-1.5">제시문</div><div class="passage serif text-[15px] text-slate-800 bg-slate-50 border border-slate-200 rounded-xl p-4">${passageHtml(t.passage, t.images)}</div></div>` : ''}
-        <div><div class="text-[11px] font-extrabold text-slate-400 mb-1.5">문항</div><div class="text-[15px] font-bold text-slate-900 bg-teal-50 border-l-4 border-teal-500 rounded-r-xl p-4 leading-7 whitespace-pre-wrap">${escapeHtml(t.question || '(문항이 비어 있어요)')}</div></div>
+        <div class="q-anchor"><div class="text-[11px] font-extrabold text-slate-400 mb-1.5">문항</div><div class="text-[15px] font-bold text-slate-900 bg-teal-50 border-l-4 border-teal-500 rounded-r-xl p-4 leading-7 whitespace-pre-wrap">${escapeHtml(t.question || '(문항이 비어 있어요)')}</div></div>
     </div>`;
 }
 function renderTopic() {
@@ -850,7 +903,7 @@ function renderTopic() {
         <div class="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6">
             <h1 class="text-xl font-extrabold text-slate-900">${escapeHtml(t.title)}</h1>
             <div class="flex flex-wrap gap-1.5 mt-2 mb-5">${conditionChips(t)}</div>
-            ${promptHtml(t, false)}
+            ${promptHtml(t, false, true)}
             <div class="flex flex-wrap gap-2 mt-5">
                 ${draft ? `<button onclick="resumeWriting('${draft.id}')" class="bg-amber-500 hover:bg-amber-400 text-white font-bold text-sm px-4 py-2.5 rounded-xl"><i class="fa-solid fa-pen mr-1"></i>쓰던 답안 이어 쓰기 (${countText(draft.text).withSp}자)</button>` : ''}
                 <button onclick="startWriting('${t.id}')" class="bg-teal-600 hover:bg-teal-500 text-white font-bold text-sm px-4 py-2.5 rounded-xl"><i class="fa-solid fa-feather-pointed mr-1"></i>${draft ? '새로 쓰기' : '답안 쓰기 시작'}</button>
@@ -1094,7 +1147,8 @@ function openWriting(id) {
     if (!t) return;
     writing = { answerId: id, startTick: Date.now(), base: a.duration || 0, running: true };
     $('wTitle').textContent = t.title;
-    $('wPromptBody').innerHTML = promptHtml(t, true);
+    $('wPromptBody').innerHTML = promptHtml(t, true, true);
+    $('writePrompt').scrollTop = 0;
     $('essayInput').value = a.text; $('outlineInput').value = a.outline;
     $('writeOverlay').classList.remove('hidden');
     showPromptMobile(false);
