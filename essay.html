@@ -22,6 +22,11 @@
         html, body { height: 100%; overflow: hidden; }
         #app { display: flex; height: 100vh; height: 100dvh; overflow: hidden; }
         #sidebar { width: 280px; flex-shrink: 0; display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+        @media (min-width: 768px) {
+            #sidebar { transition: margin-left 0.25s ease; }
+            #app.side-hidden #sidebar { margin-left: -280px; }
+        }
+        @media (min-width: 900px) { #writeOverlay.prompt-hidden #writePrompt { display: none; } }
         #mainArea { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
         @media (max-width: 767px) {
             #sidebar { position: fixed; top: 0; left: 0; bottom: 0; z-index: 100; transform: translateX(-100%); transition: transform 0.3s ease; }
@@ -109,6 +114,7 @@
                 <div class="text-lg font-extrabold text-white"><i class="fa-solid fa-pen-nib text-teal-400 mr-1.5"></i>논술 연습장</div>
                 <div class="text-[11px] text-slate-400 mt-0.5 flex items-center gap-1.5"><span id="syncDot2" class="w-1.5 h-1.5 rounded-full bg-yellow-400"></span><span id="syncLabel">연결 중...</span></div>
             </button>
+            <button onclick="toggleSidebar()" class="hidden md:flex order-last w-7 h-7 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-slate-800" title="목록 숨기기"><i class="fa-solid fa-angles-left text-xs"></i></button>
             <div class="flex flex-col gap-1">
                 <a href="./wrongnote.html" class="text-[11px] text-slate-400 hover:text-white border border-slate-700 rounded-lg px-2 py-0.5 text-center">📝 오답노트</a>
                 <a href="./wordbook.html" class="text-[11px] text-slate-400 hover:text-white border border-slate-700 rounded-lg px-2 py-0.5 text-center">📖 단어장</a>
@@ -135,7 +141,7 @@
     <!-- 메인 -->
     <main id="mainArea">
         <header class="bg-white border-b border-slate-200 px-4 py-3 flex items-center gap-3">
-            <button onclick="openSidebar()" class="md:hidden w-9 h-9 rounded-lg bg-slate-100 text-slate-600"><i class="fa-solid fa-bars"></i></button>
+            <button onclick="toggleSidebar()" id="sideToggle" class="w-9 h-9 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600" title="목록 숨기기/보이기"><i class="fa-solid fa-bars"></i></button>
             <div id="breadcrumb" class="flex-1 min-w-0 text-sm font-bold text-slate-700 truncate"></div>
             <div id="headerActions" class="flex items-center gap-2"></div>
         </header>
@@ -153,6 +159,7 @@
             <div id="wTitle" class="text-sm font-extrabold text-slate-800 truncate"></div>
             <div id="wSaved" class="text-[11px] text-slate-400">자동 저장</div>
         </div>
+        <button onclick="togglePromptPane()" id="promptToggle" class="hidden min-[900px]:inline-flex items-center text-xs font-bold px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600"></button>
         <button onclick="toggleTimer()" id="timerBtn" class="font-mono font-extrabold text-base px-3 py-1.5 rounded-lg bg-slate-900 text-white tabular-nums" title="눌러서 일시정지/계속">00:00</button>
         <button onclick="submitWriting()" class="bg-teal-600 hover:bg-teal-500 text-white text-sm font-bold px-3 sm:px-4 py-2 rounded-lg"><i class="fa-solid fa-check sm:mr-1"></i><span class="hidden sm:inline">제출</span></button>
     </div>
@@ -567,6 +574,11 @@ const doneAnswers = () => state.answers.filter(a => a.status === 'done');
 const categories = () => [...new Set(state.topics.map(t => t.category).filter(Boolean))].sort();
 
 // ── 사이드바 ──
+function toggleSidebar() {
+    if (window.innerWidth < 768) { openSidebar(); return; }
+    ui.sideHidden = !ui.sideHidden; saveUI(); applySideHidden();
+}
+function applySideHidden() { $('app').classList.toggle('side-hidden', !!ui.sideHidden); }
 function openSidebar() { $('sidebar').classList.add('open'); $('overlay').classList.add('show'); }
 function closeSidebar() { $('sidebar').classList.remove('open'); $('overlay').classList.remove('show'); }
 function renderSidebar() {
@@ -1231,6 +1243,11 @@ function setWTab(tab) {
     else setTimeout(() => (tab === 'outline' ? $('outlineInput') : $('essayInput')).focus(), 30);
 }
 $('wTabs').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setWTab(b.dataset.tab); });
+function togglePromptPane() { ui.promptHidden = !ui.promptHidden; saveUI(); applyPromptHidden(); }
+function applyPromptHidden() {
+    $('writeOverlay').classList.toggle('prompt-hidden', !!ui.promptHidden);
+    $('promptToggle').innerHTML = ui.promptHidden ? '<i class="fa-solid fa-file-lines mr-1"></i>문제 보기' : '<i class="fa-solid fa-angles-left mr-1"></i>문제 숨기기';
+}
 function showPromptMobile(show) { $('writePrompt').classList.toggle('mhide', !show); }
 function insertOutlineTemplate() {
     const el = $('outlineInput');
@@ -1685,6 +1702,7 @@ document.addEventListener('keydown', e => {
 });
 
 loadLocal();
+applySideHidden(); applyPromptHidden();
 render();
 uploadPendingImages();
 </script>
